@@ -3,179 +3,107 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { fetchReview, updateReview } from '../utils/api';
-import { fmt } from '../utils/helpers';
-import { Button, Card, ReviewPill, Spinner } from '../components/UI';
-
-const DECISIONS = [
-  { value:'APPROVED',             label:'✓ Approve',          variant:'success' },
-  { value:'REJECTED',             label:'✕ Reject',           variant:'danger' },
-  { value:'INFORMATION_REQUESTED',label:'? Request Info',     variant:'secondary' },
-];
+import { fmt, fmtDateTime } from '../utils/helpers';
+import { Card, Button, Spinner, Input } from '../components/UI';
 
 export default function ReviewPage() {
-  const { reviewId } = useParams();
+  const { id } = useParams();
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const [decision, setDecision] = useState('');
+
+  const [decision, setDecision] = useState(null);
   const [comments, setComments] = useState('');
   const [conditions, setConditions] = useState('');
-  const [officerName, setOfficerName] = useState('');
+  const [officer, setOfficer] = useState('');
 
   const { data: review, isLoading } = useQuery({
-    queryKey: ['review', reviewId],
-    queryFn: () => fetchReview(reviewId),
+    queryKey: ['review', id],
+    queryFn: () => fetchReview(id),
   });
 
   const mutation = useMutation({
-    mutationFn: () => updateReview(reviewId, {
+    mutationFn: () => updateReview(id, {
       status: decision,
       comments,
       conditions,
-      assigned_to: officerName,
+      assigned_to: officer
     }),
     onSuccess: () => {
-      toast.success('Review submitted successfully');
-      qc.invalidateQueries(['review', reviewId]);
+      toast.success('Review submitted!');
+      qc.invalidateQueries(['review', id]);
     },
     onError: (err) => toast.error(err.message),
   });
 
-  if (isLoading) return (
-    <div style={{ display:'flex', justifyContent:'center', padding:80 }}><Spinner size={40} /></div>
-  );
-  if (!review) return (
-    <div style={{ padding:40, color:'var(--red-text)', textAlign:'center' }}>Review not found.</div>
-  );
+  if (isLoading) return <div style={{ display:'flex', justifyContent:'center', padding:60 }}><Spinner /></div>;
+  if (!review) return <div style={{ padding:40, textAlign:'center' }}>Review not found.</div>;
 
-  const isComplete = ['APPROVED','REJECTED'].includes(review.status);
+  const r = review.request || {};
+  const isDone = review.status !== 'PENDING';
 
   return (
-    <div style={{ maxWidth:640, margin:'0 auto', padding:'40px 24px' }}>
-      {/* Header */}
-      <div style={{ textAlign:'center', marginBottom:32 }}>
-        <div style={{ fontSize:10, color:'var(--text-muted)', letterSpacing:'0.2em',
-          fontWeight:700, textTransform:'uppercase', marginBottom:4 }}>
-          DCMS · Papua New Guinea
-        </div>
-        <h1 style={{ fontFamily:'var(--font-serif)', fontSize:26, color:'var(--text-primary)',
-          fontWeight:700, marginBottom:4 }}>Departmental Review</h1>
-        <div style={{ display:'flex', justifyContent:'center' }}>
-          <ReviewPill status={review.status} />
-        </div>
+    <div style={{ padding: '16px 0' }} className="container">
+      <div style={{ padding: '0 20px', maxWidth: 800, margin: '0 auto' }}>
+        <h1 style={{ fontFamily:'var(--font-serif)', fontSize:24, fontWeight:700, marginBottom:8 }}>
+          Agency Review: {review.dept_code}
+        </h1>
+        <p style={{ color:'var(--text-muted)', fontSize:13, marginBottom:24 }}>
+          Please review the following diplomatic clearance application.
+        </p>
+
+        <Card style={{ marginBottom:20 }}>
+          <div style={{ fontSize:11, color:'var(--text-muted)', fontWeight:700, textTransform:'uppercase', marginBottom:12 }}>Application Summary</div>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(180px, 1fr))', gap:16 }}>
+            <div><div style={{fontSize:10, color:'var(--text-muted)'}}>Vessel</div><div style={{fontWeight:600}}>{r.vessel_name}</div></div>
+            <div><div style={{fontSize:10, color:'var(--text-muted)'}}>Mission</div><div style={{fontWeight:600}}>{r.mission_name}</div></div>
+            <div><div style={{fontSize:10, color:'var(--text-muted)'}}>Entry Date</div><div style={{fontWeight:600}}>{fmt(r.proposed_entry_date)}</div></div>
+            <div><div style={{fontSize:10, color:'var(--text-muted)'}}>Type</div><div style={{fontWeight:600}}>{r.clearance_type}</div></div>
+          </div>
+        </Card>
+
+        {isDone ? (
+          <Card style={{ textAlign:'center', borderColor:'var(--blue)', background:'var(--blue-dim)' }}>
+            <div style={{ fontSize:20, marginBottom:8 }}>✓</div>
+            <div style={{ fontWeight:700, color:'var(--text-primary)' }}>Review Completed</div>
+            <div style={{ fontSize:13, color:'var(--text-muted)' }}>Status: {review.status}</div>
+          </Card>
+        ) : (
+          <form onSubmit={e => { e.preventDefault(); mutation.mutate(); }}>
+            <Card style={{ display:'flex', flexDirection:'column', gap:20 }}>
+              <Input label="Your Name / Title *" value={officer} onChange={e => setOfficer(e.target.value)} required />
+
+              <div>
+                <span style={{ fontSize:11, color:'var(--text-muted)', fontWeight:700, textTransform:'uppercase', display:'block', marginBottom:8 }}>Decision *</span>
+                <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
+                  {['APPROVED', 'REJECTED'].map(v => (
+                    <Button
+                      key={v}
+                      type="button"
+                      variant={decision === v ? (v === 'APPROVED' ? 'success' : 'danger') : 'secondary'}
+                      onClick={() => setDecision(v)}
+                      style={{ flex: 1 }}
+                    >
+                      {v === 'APPROVED' ? '✓ Approve' : '✕ Reject'}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+
+              <label style={{ display:'flex', flexDirection:'column', gap:4 }}>
+                <span style={{ fontSize:11, color:'var(--text-muted)', fontWeight:700, textTransform:'uppercase' }}>Comments</span>
+                <textarea
+                  value={comments} onChange={e => setComments(e.target.value)}
+                  rows={3} style={{ background:'var(--bg-elevated)', border:'1px solid var(--border-light)', borderRadius:'var(--radius-sm)', padding:10, color:'#fff', outline:'none' }}
+                />
+              </label>
+
+              <Button type="submit" variant="primary" disabled={!decision || !officer || mutation.isPending} style={{ justifyContent:'center' }}>
+                {mutation.isPending ? 'Submitting...' : 'Submit Decision'}
+              </Button>
+            </Card>
+          </form>
+        )}
       </div>
-
-      {/* Request summary */}
-      <Card style={{ marginBottom:20 }}>
-        <div style={{ fontSize:11, color:'var(--text-muted)', fontWeight:700,
-          textTransform:'uppercase', letterSpacing:'0.12em', marginBottom:14 }}>
-          Application Summary
-        </div>
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-          {[
-            ['Reference', review.reference_number],
-            ['Department', review.dept_name],
-            ['Vessel', review.vessel_name],
-            ['Notified', review.notified_at ? fmt(review.notified_at) : '—'],
-          ].map(([k,v]) => (
-            <div key={k}>
-              <div style={{ fontSize:10, color:'var(--text-muted)', textTransform:'uppercase',
-                letterSpacing:'0.1em', marginBottom:2 }}>{k}</div>
-              <div style={{ fontSize:14, fontWeight:700, color:'var(--text-primary)' }}>{v}</div>
-            </div>
-          ))}
-        </div>
-      </Card>
-
-      {isComplete ? (
-        <Card style={{ textAlign:'center', borderColor:'var(--green)', background:'var(--green-dim)' }}>
-          <div style={{ fontSize:32, marginBottom:8 }}>✅</div>
-          <div style={{ fontSize:16, fontWeight:700, color:'var(--text-primary)', marginBottom:6 }}>
-            Review Submitted
-          </div>
-          <ReviewPill status={review.status} />
-          {review.comments && (
-            <div style={{ marginTop:12, fontSize:13, color:'var(--text-muted)' }}>
-              {review.comments}
-            </div>
-          )}
-        </Card>
-      ) : (
-        <Card>
-          <div style={{ fontSize:11, color:'var(--text-muted)', fontWeight:700,
-            textTransform:'uppercase', letterSpacing:'0.12em', marginBottom:14 }}>
-            Submit Decision
-          </div>
-
-          {/* Officer name */}
-          <label style={{ display:'flex', flexDirection:'column', gap:4, marginBottom:14 }}>
-            <span style={{ fontSize:11, color:'var(--text-muted)', fontWeight:700,
-              textTransform:'uppercase', letterSpacing:'0.1em' }}>Officer Name</span>
-            <input value={officerName} onChange={e => setOfficerName(e.target.value)}
-              placeholder="Your name and title"
-              style={{ background:'var(--bg-elevated)', border:'1px solid var(--border-light)',
-                borderRadius:'var(--radius-sm)', padding:'9px 12px',
-                color:'var(--text-primary)', fontSize:13, outline:'none' }} />
-          </label>
-
-          {/* Decision buttons */}
-          <div style={{ fontSize:11, color:'var(--text-muted)', fontWeight:700,
-            textTransform:'uppercase', letterSpacing:'0.1em', marginBottom:8 }}>
-            Decision
-          </div>
-          <div style={{ display:'flex', gap:8, marginBottom:14 }}>
-            {DECISIONS.map(d => (
-              <button key={d.value} onClick={() => setDecision(d.value)} style={{
-                flex:1, padding:'10px 8px', borderRadius:'var(--radius-md)',
-                border:`2px solid ${decision === d.value
-                  ? (d.value === 'APPROVED' ? 'var(--green)' : d.value === 'REJECTED' ? 'var(--red)' : 'var(--blue)')
-                  : 'var(--border)'}`,
-                background: decision === d.value
-                  ? (d.value === 'APPROVED' ? 'var(--green-dim)' : d.value === 'REJECTED' ? 'var(--red-dim)' : 'var(--blue-dim)')
-                  : 'transparent',
-                color: decision === d.value
-                  ? (d.value === 'APPROVED' ? 'var(--green-text)' : d.value === 'REJECTED' ? 'var(--red-text)' : 'var(--blue-text)')
-                  : 'var(--text-muted)',
-                fontSize:12, fontWeight:700, cursor:'pointer', transition:'all .15s',
-              }}>{d.label}</button>
-            ))}
-          </div>
-
-          {/* Comments */}
-          <label style={{ display:'flex', flexDirection:'column', gap:4, marginBottom:14 }}>
-            <span style={{ fontSize:11, color:'var(--text-muted)', fontWeight:700,
-              textTransform:'uppercase', letterSpacing:'0.1em' }}>Comments</span>
-            <textarea value={comments} onChange={e => setComments(e.target.value)}
-              placeholder="Add review notes or justification..."
-              rows={3} style={{ background:'var(--bg-elevated)', border:'1px solid var(--border-light)',
-                borderRadius:'var(--radius-sm)', padding:'9px 12px',
-                color:'var(--text-primary)', fontSize:13, outline:'none',
-                resize:'vertical', width:'100%' }} />
-          </label>
-
-          {/* Conditions (approval only) */}
-          {decision === 'APPROVED' && (
-            <label style={{ display:'flex', flexDirection:'column', gap:4, marginBottom:20 }}>
-              <span style={{ fontSize:11, color:'var(--green-text)', fontWeight:700,
-                textTransform:'uppercase', letterSpacing:'0.1em' }}>Conditions (optional)</span>
-              <textarea value={conditions} onChange={e => setConditions(e.target.value)}
-                placeholder="Any conditions attached to this approval..."
-                rows={2} style={{ background:'var(--bg-elevated)', border:'1px solid rgba(34,197,94,.3)',
-                  borderRadius:'var(--radius-sm)', padding:'9px 12px',
-                  color:'var(--text-primary)', fontSize:13, outline:'none',
-                  resize:'vertical', width:'100%' }} />
-            </label>
-          )}
-
-          <Button
-            variant={decision === 'APPROVED' ? 'success' : decision === 'REJECTED' ? 'danger' : 'primary'}
-            onClick={() => mutation.mutate()}
-            disabled={!decision || mutation.isPending}
-            style={{ width:'100%', justifyContent:'center' }}
-          >
-            {mutation.isPending ? '⏳ Submitting…' : 'Submit Review Decision'}
-          </Button>
-        </Card>
-      )}
     </div>
   );
 }

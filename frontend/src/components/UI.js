@@ -1,3 +1,5 @@
+import { Link } from 'react-router-dom';
+
 // ── StatusPill ────────────────────────────────────────────────
 export function StatusPill({ status, overdue }) {
   const map = {
@@ -46,7 +48,7 @@ export function ProgressBar({ approved, total, rejected }) {
   const pct = total > 0 ? Math.round((approved / total) * 100) : 0;
   const color = rejected > 0 ? '#ef4444' : approved === total ? '#22c55e' : '#eab308';
   return (
-    <div>
+    <div style={{ width: '100%' }}>
       <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, marginBottom:3 }}>
         <span style={{ color:'#64748b' }}>{approved}/{total} approved</span>
         <span style={{ color, fontWeight:700 }}>{pct}%</span>
@@ -72,14 +74,15 @@ export function Card({ children, style }) {
 // ── PageHeader ────────────────────────────────────────────────
 export function PageHeader({ title, subtitle, action }) {
   return (
-    <div style={{ padding:'24px 28px 0', display:'flex', alignItems:'flex-start',
-      justifyContent:'space-between', marginBottom:24 }}>
-      <div>
-        <h1 style={{ fontFamily:'var(--font-serif)', fontSize:26, fontWeight:700,
-          color:'var(--text-primary)', lineHeight:1.2 }}>{title}</h1>
-        {subtitle && <p style={{ color:'var(--text-muted)', fontSize:13, marginTop:4 }}>{subtitle}</p>}
+    <div style={{ padding:'24px 20px 0' }} className="page-header-container">
+      <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:24, flexWrap: 'wrap', gap: 16 }}>
+        <div>
+          <h1 style={{ fontFamily:'var(--font-serif)', fontSize:26, fontWeight:700,
+            color:'var(--text-primary)', lineHeight:1.2 }}>{title}</h1>
+          {subtitle && <p style={{ color:'var(--text-muted)', fontSize:13, marginTop:4 }}>{subtitle}</p>}
+        </div>
+        {action && <div style={{ minWidth: 'fit-content' }}>{action}</div>}
       </div>
-      {action}
     </div>
   );
 }
@@ -88,7 +91,7 @@ export function PageHeader({ title, subtitle, action }) {
 export function StatCard({ label, value, color = 'var(--text-primary)', icon }) {
   return (
     <div style={{ background:'var(--bg-surface)', border:'1px solid var(--border)',
-      borderRadius:'var(--radius-lg)', padding:'16px 20px', flex:1 }}>
+      borderRadius:'var(--radius-lg)', padding:'16px 20px', flex: '1 1 200px' }}>
       <div style={{ fontSize:11, color:'var(--text-muted)', letterSpacing:'0.1em',
         textTransform:'uppercase', fontWeight:700, marginBottom:6 }}>{label}</div>
       <div style={{ fontSize:28, fontWeight:900, color,
@@ -117,7 +120,7 @@ export function Button({ children, onClick, disabled, variant = 'primary', style
       padding:'10px 18px', borderRadius:'var(--radius-md)',
       fontSize:13, fontWeight:700, cursor: disabled ? 'not-allowed' : 'pointer',
       opacity: disabled ? 0.45 : 1, transition:'all .2s',
-      display:'inline-flex', alignItems:'center', gap:6, ...style,
+      display:'inline-flex', alignItems:'center', justifyContent: 'center', gap:6, ...style,
     }}>{children}</button>
   );
 }
@@ -125,7 +128,7 @@ export function Button({ children, onClick, disabled, variant = 'primary', style
 // ── Input ─────────────────────────────────────────────────────
 export function Input({ label, ...props }) {
   return (
-    <label style={{ display:'flex', flexDirection:'column', gap:4 }}>
+    <label style={{ display:'flex', flexDirection:'column', gap:4, width: '100%' }}>
       {label && <span style={{ fontSize:11, color:'var(--text-muted)', fontWeight:700,
         textTransform:'uppercase', letterSpacing:'0.1em' }}>{label}</span>}
       <input {...props} style={{
@@ -141,7 +144,7 @@ export function Input({ label, ...props }) {
 // ── Select ────────────────────────────────────────────────────
 export function Select({ label, children, ...props }) {
   return (
-    <label style={{ display:'flex', flexDirection:'column', gap:4 }}>
+    <label style={{ display:'flex', flexDirection:'column', gap:4, width: '100%' }}>
       {label && <span style={{ fontSize:11, color:'var(--text-muted)', fontWeight:700,
         textTransform:'uppercase', letterSpacing:'0.1em' }}>{label}</span>}
       <select {...props} style={{

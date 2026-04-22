@@ -16,6 +16,7 @@ const clearancesRouter = require('./routes/clearances');
 const missionsRouter   = require('./routes/missions');
 
 const app = express();
+app.set('trust proxy', 1);
 
 // ── Security ──────────────────────────────────
 app.use(helmet({

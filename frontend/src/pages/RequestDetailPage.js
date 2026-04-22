@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { fetchRequest, issueClearance } from '../utils/api';
 import { fmt, fmtDateTime, isOverdue } from '../utils/helpers';
-import { StatusPill, ReviewPill, Button, Spinner, Card } from '../components/UI';
+import { StatusPill, ReviewPill, PageHeader, Card, Button, Spinner } from '../components/UI';
 import QRModal from '../components/QRModal';
 
 export default function RequestDetailPage() {
@@ -46,17 +46,17 @@ export default function RequestDetailPage() {
   const reviews = request.reviews || [];
 
   return (
-    <div style={{ padding:'24px 28px', maxWidth:900 }}>
-      {/* Back */}
-      <button onClick={() => navigate('/dashboard')} style={{
-        background:'none', border:'none', color:'var(--text-muted)',
-        fontSize:13, cursor:'pointer', marginBottom:20,
-        display:'flex', alignItems:'center', gap:6,
-      }}>← Back to Dashboard</button>
+    <div style={{ padding: '16px 0' }} className="container">
+      <div style={{ padding: '0 20px' }}>
+        {/* Back */}
+        <button onClick={() => navigate('/dashboard')} style={{
+          background:'none', border:'none', color:'var(--text-muted)',
+          fontSize:13, cursor:'pointer', marginBottom:20,
+          display:'flex', alignItems:'center', gap:6,
+        }}>← Back to Dashboard</button>
 
-      {/* Title row */}
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:24 }}>
-        <div>
+        {/* Title row */}
+        <div style={{ marginBottom:24 }}>
           <h1 style={{ fontFamily:'var(--font-serif)', fontSize:26, color:'var(--text-primary)',
             fontWeight:700, marginBottom:4 }}>{request.vessel_name}</h1>
           <div style={{ fontFamily:'var(--font-mono)', fontSize:12, color:'var(--blue-text)',
@@ -69,113 +69,95 @@ export default function RequestDetailPage() {
             )}
           </div>
         </div>
-      </div>
 
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 340px', gap:20 }}>
-        {/* Left column */}
-        <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
+        <div className="detail-grid">
+          {/* Main info */}
+          <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
+            <Card>
+              <div style={{ fontSize:11, color:'var(--text-muted)', fontWeight:700,
+                textTransform:'uppercase', letterSpacing:'0.12em', marginBottom:14 }}>
+                Request Details
+              </div>
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(140px, 1fr))', gap:16 }}>
+                {[
+                  ['Mission',       request.mission_name],
+                  ['Country',       request.country_name],
+                  ['Vessel Type',   request.vessel_type?.replace(/_/g,' ')],
+                  ['Flag',          request.vessel_flag],
+                  ['Port of Entry', request.port_of_entry],
+                  ['Port of Exit',  request.port_of_exit || '—'],
+                  ['Entry Date',    fmt(request.proposed_entry_date)],
+                  ['Exit Date',     fmt(request.proposed_exit_date)],
+                  ['Crew',          request.total_crew ?? '—'],
+                  ['Passengers',    request.total_passengers ?? '—'],
+                  ['Submitted',     fmtDateTime(request.submitted_at)],
+                  ['Deadline',      fmtDateTime(request.review_deadline)],
+                ].map(([k,v]) => (
+                  <div key={k}>
+                    <div style={{ fontSize:10, color:'var(--text-muted)', textTransform:'uppercase',
+                      letterSpacing:'0.1em', marginBottom:2 }}>{k}</div>
+                    <div style={{ fontSize:13, fontWeight:600, color:'var(--text-primary)' }}>{v}</div>
+                  </div>
+                ))}
+              </div>
+            </Card>
 
-          {/* Request info */}
-          <Card>
-            <div style={{ fontSize:11, color:'var(--text-muted)', fontWeight:700,
-              textTransform:'uppercase', letterSpacing:'0.12em', marginBottom:14 }}>
-              Request Details
-            </div>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
-              {[
-                ['Mission',       request.mission_name],
-                ['Country',       request.country_name],
-                ['Vessel Type',   request.vessel_type?.replace(/_/g,' ')],
-                ['Flag',          request.vessel_flag],
-                ['Port of Entry', request.port_of_entry],
-                ['Port of Exit',  request.port_of_exit || '—'],
-                ['Entry Date',    fmt(request.proposed_entry_date)],
-                ['Exit Date',     fmt(request.proposed_exit_date)],
-                ['Crew',          request.total_crew ?? '—'],
-                ['Passengers',    request.total_passengers ?? '—'],
-                ['Submitted',     fmtDateTime(request.submitted_at)],
-                ['Deadline',      fmtDateTime(request.review_deadline)],
-              ].map(([k,v]) => (
-                <div key={k}>
-                  <div style={{ fontSize:10, color:'var(--text-muted)', textTransform:'uppercase',
-                    letterSpacing:'0.1em', marginBottom:2 }}>{k}</div>
-                  <div style={{ fontSize:13, fontWeight:600, color:'var(--text-primary)' }}>{v}</div>
-                </div>
-              ))}
-            </div>
-          </Card>
-
-          {/* Agency Reviews */}
-          <Card>
-            <div style={{ fontSize:11, color:'var(--text-muted)', fontWeight:700,
-              textTransform:'uppercase', letterSpacing:'0.12em', marginBottom:14 }}>
-              Agency Reviews
-            </div>
-            <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-              {reviews.map(rv => (
-                <div key={rv.review_id} style={{
-                  display:'flex', alignItems:'center', justifyContent:'space-between',
-                  background:'var(--bg-elevated)', borderRadius:'var(--radius-md)',
-                  padding:'10px 14px',
-                }}>
-                  <div>
-                    <div style={{ fontWeight:700, color:'var(--text-primary)', fontSize:13 }}>
-                      {rv.dept_code}
-                    </div>
-                    <div style={{ fontSize:11, color:'var(--text-muted)' }}>{rv.dept_name}</div>
-                    {rv.reviewed_at && (
-                      <div style={{ fontSize:10, color:'var(--text-subtle)', marginTop:2 }}>
-                        {fmtDateTime(rv.reviewed_at)}
+            <Card>
+              <div style={{ fontSize:11, color:'var(--text-muted)', fontWeight:700,
+                textTransform:'uppercase', letterSpacing:'0.12em', marginBottom:14 }}>
+                Agency Reviews
+              </div>
+              <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                {reviews.map(rv => (
+                  <div key={rv.review_id} style={{
+                    display:'flex', alignItems:'center', justifyContent:'space-between',
+                    background:'var(--bg-elevated)', borderRadius:'var(--radius-md)',
+                    padding:'10px 14px', flexWrap: 'wrap', gap: 8
+                  }}>
+                    <div>
+                      <div style={{ fontWeight:700, color:'var(--text-primary)', fontSize:13 }}>
+                        {rv.dept_code}
                       </div>
-                    )}
-                  </div>
-                  <ReviewPill status={rv.status} />
-                </div>
-              ))}
-              {reviews.length === 0 && (
-                <div style={{ color:'var(--text-muted)', fontSize:13, textAlign:'center', padding:16 }}>
-                  No reviews yet
-                </div>
-              )}
-            </div>
-          </Card>
-        </div>
-
-        {/* Right column — issue clearance */}
-        <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
-          <Card>
-            <div style={{ fontSize:11, color:'var(--text-muted)', fontWeight:700,
-              textTransform:'uppercase', letterSpacing:'0.12em', marginBottom:14 }}>
-              Issue Clearance
-            </div>
-
-            {/* Progress bar */}
-            <div style={{ marginBottom:16 }}>
-              {(() => {
-                const approved = reviews.filter(r => r.status === 'APPROVED').length;
-                const total = reviews.filter(r => r.is_mandatory !== false).length || 5;
-                const pct = Math.round((approved / total) * 100);
-                const color = approved === total ? '#22c55e' : '#eab308';
-                return (
-                  <div>
-                    <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, marginBottom:4 }}>
-                      <span style={{ color:'var(--text-muted)' }}>{approved}/{total} agencies approved</span>
-                      <span style={{ color, fontWeight:700 }}>{pct}%</span>
+                      <div style={{ fontSize:11, color:'var(--text-muted)' }}>{rv.dept_name}</div>
                     </div>
-                    <div style={{ height:6, background:'var(--bg-elevated)', borderRadius:99 }}>
-                      <div style={{ height:'100%', width:`${pct}%`, background:color,
-                        borderRadius:99, transition:'width .5s' }} />
-                    </div>
+                    <ReviewPill status={rv.status} />
                   </div>
-                );
-              })()}
-            </div>
+                ))}
+              </div>
+            </Card>
+          </div>
 
-            {canIssue ? (
-              <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-                <label style={{ display:'flex', flexDirection:'column', gap:4 }}>
-                  <span style={{ fontSize:11, color:'var(--text-muted)', fontWeight:700,
-                    textTransform:'uppercase', letterSpacing:'0.1em' }}>Issuing Officer</span>
+          {/* Action sidebar */}
+          <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
+            <Card>
+              <div style={{ fontSize:11, color:'var(--text-muted)', fontWeight:700,
+                textTransform:'uppercase', letterSpacing:'0.12em', marginBottom:14 }}>
+                Issue Clearance
+              </div>
+
+              <div style={{ marginBottom:16 }}>
+                {(() => {
+                  const approved = reviews.filter(r => r.status === 'APPROVED').length;
+                  const total = reviews.filter(r => r.is_mandatory !== false).length || 5;
+                  const pct = Math.round((approved / total) * 100);
+                  const color = approved === total ? '#22c55e' : '#eab308';
+                  return (
+                    <div>
+                      <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, marginBottom:4 }}>
+                        <span style={{ color:'var(--text-muted)' }}>{approved}/{total} approved</span>
+                        <span style={{ color, fontWeight:700 }}>{pct}%</span>
+                      </div>
+                      <div style={{ height:6, background:'var(--bg-elevated)', borderRadius:99 }}>
+                        <div style={{ height:'100%', width:`${pct}%`, background:color,
+                          borderRadius:99, transition:'width .5s' }} />
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {canIssue ? (
+                <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
                   <input
                     value={officer}
                     onChange={e => setOfficer(e.target.value)}
@@ -183,54 +165,42 @@ export default function RequestDetailPage() {
                     style={{
                       background:'var(--bg-elevated)', border:'1px solid var(--border-light)',
                       borderRadius:'var(--radius-sm)', padding:'9px 12px',
-                      color:'var(--text-primary)', fontSize:13, outline:'none',
+                      color:'var(--text-primary)', fontSize:13, outline:'none', width: '100%'
                     }}
                   />
-                </label>
-                <Button
-                  variant="success"
-                  onClick={() => issueMutation.mutate()}
-                  disabled={issueMutation.isPending || !officer.trim()}
-                  style={{ width:'100%', justifyContent:'center' }}
-                >
-                  {issueMutation.isPending ? '⏳ Generating…' : '⬛ Generate QR Clearance'}
-                </Button>
-              </div>
-            ) : (
-              <div style={{ textAlign:'center', padding:'12px 0' }}>
-                <div style={{ fontSize:24, marginBottom:8 }}>🔒</div>
-                <div style={{ fontSize:13, color:'var(--text-muted)', lineHeight:1.5 }}>
-                  {request.status === 'CLEARANCE_ISSUED'
-                    ? 'Clearance has already been issued.'
-                    : 'All 5 mandatory agencies must approve before DFA can issue a clearance.'}
+                  <Button
+                    variant="success"
+                    onClick={() => issueMutation.mutate()}
+                    disabled={issueMutation.isPending || !officer.trim()}
+                    style={{ width:'100%', justifyContent:'center' }}
+                  >
+                    {issueMutation.isPending ? '⏳ Generating…' : '⬛ Generate QR'}
+                  </Button>
                 </div>
-              </div>
-            )}
-          </Card>
-
-          {/* If clearance already issued */}
-          {request.status === 'CLEARANCE_ISSUED' && (
-            <Card style={{ borderColor:'var(--green)', background:'var(--green-dim)' }}>
-              <div style={{ fontSize:11, color:'var(--green-text)', fontWeight:700,
-                textTransform:'uppercase', letterSpacing:'0.12em', marginBottom:8 }}>
-                ✓ Clearance Issued
-              </div>
-              <div style={{ fontSize:12, color:'var(--text-muted)' }}>
-                This request has a valid digital clearance issued by DFA.
-              </div>
+              ) : (
+                <div style={{ textAlign:'center', color:'var(--text-muted)', fontSize:12 }}>
+                  {request.status === 'CLEARANCE_ISSUED' ? '✓ Issued' : 'Waiting for approvals...'}
+                </div>
+              )}
             </Card>
-          )}
+          </div>
         </div>
       </div>
 
-      {/* QR Modal */}
-      {qrData && (
-        <QRModal
-          clearance={qrData}
-          request={request}
-          onClose={() => setQrData(null)}
-        />
-      )}
+      {qrData && <QRModal clearance={qrData} request={request} onClose={() => setQrData(null)} />}
+
+      <style>{`
+        .detail-grid {
+          display: grid;
+          grid-template-columns: 1fr 320px;
+          gap: 20px;
+        }
+        @media (max-width: 850px) {
+          .detail-grid {
+            grid-template-columns: 1fr;
+          }
+        }
+      `}</style>
     </div>
   );
 }
