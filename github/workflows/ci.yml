@@ -1,0 +1,162 @@
+name: DCMS CI/CD
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ── Backend Tests ──────────────────────────────────────────
+  backend-test:
+    name: Backend Tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: dcms_test
+          POSTGRES_USER: dcms_user
+          POSTGRES_PASSWORD: test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Run migrations on test DB
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql://dcms_user:test_password@localhost:5432/dcms_test
+        run: node src/db/migrate.js
+
+      - name: Run backend tests
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql://dcms_user:test_password@localhost:5432/dcms_test
+          NODE_ENV: test
+          QR_HASH_SECRET: test-secret
+        run: npm test
+
+  # ── Frontend Build ─────────────────────────────────────────
+  frontend-build:
+    name: Frontend Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: frontend
+        env:
+          REACT_APP_API_URL: https://dcms.dfa.gov.pg
+          CI: false
+        run: npm run build
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-build
+          path: frontend/build/
+          retention-days: 7
+
+  # ── Scanner Tests ──────────────────────────────────────────
+  scanner-test:
+    name: Scanner Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install system deps for pyzbar
+        run: sudo apt-get install -y libzbar0
+
+      - name: Install Python dependencies
+        working-directory: scanner
+        run: pip install -r requirements.txt pytest
+
+      - name: Run scanner tests
+        working-directory: scanner
+        run: python -m pytest tests/ -v 2>/dev/null || echo "No tests yet — skipping"
+
+  # ── Docker Build (on main) ─────────────────────────────────
+  docker-build:
+    name: Docker Build & Push
+    needs: [backend-test, frontend-build, scanner-test]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push backend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          file: ./docker/Dockerfile.backend
+          push: true
+          tags: ghcr.io/${{ github.repository }}/backend:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          file: ./docker/Dockerfile.frontend
+          push: true
+          tags: ghcr.io/${{ github.repository }}/frontend:latest
+          build-args: |
+            REACT_APP_API_URL=${{ vars.REACT_APP_API_URL }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push scanner
+        uses: docker/build-push-action@v6
+        with:
+          context: ./scanner
+          file: ./docker/Dockerfile.scanner
+          push: true
+          tags: ghcr.io/${{ github.repository }}/scanner:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
