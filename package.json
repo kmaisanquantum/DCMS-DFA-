@@ -6,7 +6,8 @@
     "frontend"
   ],
   "scripts": {
-    "start": "yarn --cwd backend start",
-    "build": "yarn --cwd backend install && CI=false yarn --cwd frontend install && CI=false yarn --cwd frontend build"
+    "build": "CI=false yarn workspace dcms-frontend build",
+    "postinstall": "yarn build",
+    "start": "yarn workspace dcms-backend start"
   }
 }

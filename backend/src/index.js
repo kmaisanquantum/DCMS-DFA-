@@ -46,7 +46,9 @@ app.use(express.urlencoded({ extended: true }));
 app.use(morgan('combined', { stream: { write: (msg) => logger.http(msg.trim()) } }));
 
 // ── Static Files ───────────────────────────────
-app.use(express.static(path.join(__dirname, '../../frontend/build')));
+const buildPath = path.resolve(__dirname, '../../frontend/build');
+logger.info(`Serving static files from: ${buildPath}`);
+app.use(express.static(buildPath));
 
 // ── Routes ─────────────────────────────────────
 app.get('/health', (req, res) =>
@@ -69,11 +71,10 @@ app.get('/api/departments', async (req, res, next) => {
 
 // ── Frontend SPA Catch-all ─────────────────────
 app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, '../../frontend/build/index.html'));
+  res.sendFile(path.join(buildPath, 'index.html'));
 });
 
 // ── Error handling ─────────────────────────────
-// (Note: notFound will only trigger for non-GET requests since the catch-all handles all GETs)
 app.use(notFound);
 app.use(errorHandler);
 
