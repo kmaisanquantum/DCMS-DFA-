@@ -1,9 +1,12 @@
 {
   "name": "dcms-monorepo",
   "private": true,
-  "workspaces": ["backend", "frontend"],
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
   "scripts": {
     "start": "yarn --cwd backend start",
-    "build": "yarn --cwd backend install"
+    "build": "yarn --cwd backend install && CI=false yarn --cwd frontend install && CI=false yarn --cwd frontend build"
   }
 }
