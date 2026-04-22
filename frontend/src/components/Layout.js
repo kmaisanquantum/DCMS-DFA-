@@ -7,129 +7,122 @@ const NAV = [
 ];
 
 export default function Layout() {
-  const [isSidebarOpen, setSidebarOpen] = useState(false);
+  const [isMobileMenuOpen, setMobileMenuOpen] = useState(false);
   const location = useLocation();
 
-  // Close sidebar on navigation (mobile)
+  // Close mobile menu on navigation
   useEffect(() => {
-    setSidebarOpen(false);
+    setMobileMenuOpen(false);
   }, [location.pathname]);
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', flexDirection: 'column' }}>
-      {/* Mobile Header */}
+      {/* Top Navigation Bar */}
       <header style={{
-        height: 60, background: 'var(--bg-surface)',
+        height: 64, background: 'var(--bg-surface)',
         borderBottom: '1px solid var(--border)',
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '0 16px', position: 'sticky', top: 0, zIndex: 50,
-      }} className="show-mobile">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{
-            width: 32, height: 32, borderRadius: 6,
-            background: 'linear-gradient(135deg,#16a34a,#0ea5e9)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 16,
-          }}>🇵🇬</div>
-          <span style={{ fontWeight: 700, fontSize: 14 }}>DCMS</span>
-        </div>
-        <button
-          onClick={() => setSidebarOpen(!isSidebarOpen)}
-          style={{
-            background: 'none', border: 'none', color: 'var(--text-primary)',
-            fontSize: 24, padding: 4, cursor: 'pointer'
-          }}
-        >
-          {isSidebarOpen ? '✕' : '☰'}
-        </button>
-      </header>
-
-      <div style={{ display: 'flex', flex: 1 }}>
-        {/* Sidebar */}
-        <aside style={{
-          width: 220, background: 'var(--bg-surface)',
-          borderRight: '1px solid var(--border)',
-          display: 'flex', flexDirection: 'column',
-          position: 'fixed', top: 0, bottom: 0, left: 0,
-          zIndex: 100, transform: isSidebarOpen ? 'translateX(0)' : 'translateX(-100%)',
-          transition: 'transform 0.3s ease-in-out',
-        }} className="sidebar-container">
-          {/* Desktop Logo (Hidden on mobile) */}
-          <div style={{ padding: '20px 16px 16px', borderBottom: '1px solid var(--border)' }} className="hide-mobile">
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={{
-                width: 36, height: 36, borderRadius: 8,
-                background: 'linear-gradient(135deg,#16a34a,#0ea5e9)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 18, flexShrink: 0,
-              }}>🇵🇬</div>
-              <div>
-                <div style={{ fontFamily: 'var(--font-serif)', fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.2 }}>DCMS</div>
-                <div style={{ fontSize: 10, color: 'var(--text-muted)', letterSpacing: '0.05em' }}>PNG · DFA</div>
-              </div>
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        position: 'sticky', top: 0, zIndex: 100,
+        padding: '0 20px',
+      }}>
+        <div style={{
+          width: '100%', maxWidth: 1200,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between'
+        }}>
+          {/* Logo */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{
+              width: 36, height: 36, borderRadius: 8,
+              background: 'linear-gradient(135deg,#16a34a,#0ea5e9)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 18, flexShrink: 0,
+            }}>🇵🇬</div>
+            <div className="hide-mobile">
+              <div style={{ fontFamily: 'var(--font-serif)', fontSize: 16, fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.2 }}>DCMS</div>
+              <div style={{ fontSize: 10, color: 'var(--text-muted)', letterSpacing: '0.05em' }}>PNG · DFA</div>
             </div>
+            <div className="show-mobile" style={{ fontWeight: 700, fontSize: 16 }}>DCMS</div>
           </div>
 
-          {/* Mobile Sidebar Logo */}
-          <div style={{ padding: '20px 16px 16px', borderBottom: '1px solid var(--border)' }} className="show-mobile">
-             <div style={{ fontWeight: 700 }}>Menu</div>
-          </div>
-
-          {/* Nav */}
-          <nav style={{ padding: '12px 8px', flex: 1 }}>
+          {/* Desktop Nav */}
+          <nav style={{ display: 'flex', gap: 8 }} className="hide-mobile">
             {NAV.map(({ to, icon, label }) => (
               <NavLink key={to} to={to} style={({ isActive }) => ({
-                display: 'flex', alignItems: 'center', gap: 10,
-                padding: '9px 12px', borderRadius: 'var(--radius-sm)',
-                marginBottom: 2, textDecoration: 'none',
-                fontSize: 13, fontWeight: 500,
+                display: 'flex', alignItems: 'center', gap: 8,
+                padding: '8px 16px', borderRadius: 'var(--radius-md)',
+                textDecoration: 'none',
+                fontSize: 14, fontWeight: 600,
                 color: isActive ? 'var(--text-primary)' : 'var(--text-muted)',
                 background: isActive ? 'var(--bg-elevated)' : 'transparent',
                 transition: 'all .15s',
               })}>
-                <span style={{ width: 18, textAlign: 'center', fontFamily: 'var(--font-mono)', fontSize: 14 }}>{icon}</span>
+                <span style={{ fontSize: 16, opacity: 0.8 }}>{icon}</span>
                 {label}
               </NavLink>
             ))}
           </nav>
 
-          {/* Footer */}
-          <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border)', fontSize: 10, color: 'var(--text-subtle)' }}>
-            <div style={{ fontWeight: 700, marginBottom: 2, color: 'var(--text-muted)' }}>CLASSIFIED SYSTEM</div>
-            <div>v1.0.0</div>
-          </div>
-        </aside>
-
-        {/* Sidebar Overlay (Mobile) */}
-        {isSidebarOpen && (
-          <div
-            onClick={() => setSidebarOpen(false)}
+          {/* Mobile Menu Toggle */}
+          <button
+            className="show-mobile"
+            onClick={() => setMobileMenuOpen(!isMobileMenuOpen)}
             style={{
-              position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 90
+              background: 'none', border: 'none', color: 'var(--text-primary)',
+              fontSize: 24, padding: 8, cursor: 'pointer'
             }}
-          />
-        )}
+          >
+            {isMobileMenuOpen ? '✕' : '☰'}
+          </button>
+        </div>
+      </header>
 
-        {/* Main content */}
-        <main style={{
-          flex: 1, overflowY: 'auto', background: 'var(--bg-base)',
-          marginLeft: 0, // Default for mobile
-          paddingBottom: 40,
-        }} className="main-content">
+      {/* Mobile Menu Overlay */}
+      {isMobileMenuOpen && (
+        <div style={{
+          position: 'fixed', top: 64, left: 0, right: 0, bottom: 0,
+          background: 'var(--bg-surface)', zIndex: 90,
+          display: 'flex', flexDirection: 'column', padding: '20px'
+        }} className="show-mobile">
+          <nav style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {NAV.map(({ to, icon, label }) => (
+              <NavLink key={to} to={to} style={({ isActive }) => ({
+                display: 'flex', alignItems: 'center', gap: 12,
+                padding: '12px 16px', borderRadius: 'var(--radius-md)',
+                textDecoration: 'none',
+                fontSize: 16, fontWeight: 600,
+                color: isActive ? 'var(--text-primary)' : 'var(--text-muted)',
+                background: isActive ? 'var(--bg-elevated)' : 'transparent',
+              })}>
+                <span style={{ fontSize: 20 }}>{icon}</span>
+                {label}
+              </NavLink>
+            ))}
+          </nav>
+
+          <div style={{ marginTop: 'auto', padding: '20px 0', borderTop: '1px solid var(--border)', fontSize: 11, color: 'var(--text-subtle)' }}>
+            <div style={{ fontWeight: 700, marginBottom: 4, color: 'var(--text-muted)' }}>DCMS · CLASSIFIED SYSTEM</div>
+            <div>v1.0.0 · Department of Foreign Affairs</div>
+          </div>
+        </div>
+      )}
+
+      {/* Main content */}
+      <main style={{
+        flex: 1, background: 'var(--bg-base)',
+        paddingBottom: 40,
+      }}>
+        <div style={{ maxWidth: 1200, margin: '0 auto' }}>
           <Outlet />
-        </main>
-      </div>
+        </div>
+      </main>
 
       <style>{`
-        @media (min-width: 769px) {
-          .sidebar-container {
-            transform: none !important;
-            position: sticky !important;
-            height: 100vh !important;
-          }
-          .main-content {
-            margin-left: 0 !important;
-          }
+        .hide-mobile { display: flex; }
+        .show-mobile { display: none; }
+
+        @media (max-width: 768px) {
+          .hide-mobile { display: none !important; }
+          .show-mobile { display: flex !important; }
         }
       `}</style>
     </div>
