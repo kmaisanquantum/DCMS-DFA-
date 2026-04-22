@@ -5,6 +5,7 @@ const cors = require('cors');
 const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
 const path = require('path');
+const fs = require('fs');
 
 const logger = require('./utils/logger');
 const { errorHandler, notFound } = require('./middleware/errorHandler');
@@ -27,7 +28,7 @@ app.use(helmet({
   },
 }));
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  origin: true,
   credentials: true,
 }));
 
@@ -47,10 +48,15 @@ app.use(morgan('combined', { stream: { write: (msg) => logger.http(msg.trim()) }
 
 // ── Static Files ───────────────────────────────
 const buildPath = path.resolve(__dirname, '../../frontend/build');
-logger.info(`Serving static files from: ${buildPath}`);
-app.use(express.static(buildPath));
+logger.info(`Static files directory check: ${buildPath}`);
+if (fs.existsSync(buildPath)) {
+  logger.info(`Build directory exists. Files: ${fs.readdirSync(buildPath).join(', ')}`);
+  app.use(express.static(buildPath));
+} else {
+  logger.warn('Build directory does not exist yet. Frontend will not be served.');
+}
 
-// ── Routes ─────────────────────────────────────
+// ── API Routes ─────────────────────────────────
 app.get('/health', (req, res) =>
   res.json({ status: 'ok', system: 'DCMS-PNG', env: process.env.NODE_ENV, ts: new Date() })
 );
@@ -71,29 +77,35 @@ app.get('/api/departments', async (req, res, next) => {
 
 // ── Frontend SPA Catch-all ─────────────────────
 app.get('*', (req, res) => {
-  res.sendFile(path.join(buildPath, 'index.html'));
+  const indexPath = path.join(buildPath, 'index.html');
+  if (fs.existsSync(indexPath)) {
+    res.sendFile(indexPath);
+  } else {
+    res.status(404).json({ error: 'Frontend not found', path: indexPath });
+  }
 });
 
 // ── Error handling ─────────────────────────────
 app.use(notFound);
 app.use(errorHandler);
 
-// ── Start ──────────────────────────────────────
+// ── Start & Migration ──────────────────────────
 const PORT = process.env.PORT || 3001;
 const migrate = require('./db/migrate-on-start');
 
-migrate().then(() => {
-  const server = app.listen(PORT, () => {
-    logger.info(`DCMS API running on port ${PORT} [${process.env.NODE_ENV || 'development'}]`);
-  });
+const server = app.listen(PORT, () => {
+  logger.info(`DCMS API running on port ${PORT} [${process.env.NODE_ENV || 'development'}]`);
+  logger.info(`CWD: ${process.cwd()}`);
 
-  process.on('SIGTERM', () => {
-    logger.info('SIGTERM received — shutting down gracefully');
-    server.close(() => process.exit(0));
-  });
-}).catch(err => {
-  logger.error('Migration failed on start', err);
-  process.exit(1);
+  // Run migrations asynchronously after server starts
+  migrate()
+    .then(() => logger.info('Database migrations completed successfully.'))
+    .catch(err => logger.error('Database migration failed (non-fatal for web server)', err));
+});
+
+process.on('SIGTERM', () => {
+  logger.info('SIGTERM received — shutting down gracefully');
+  server.close(() => process.exit(0));
 });
 
 module.exports = app;
