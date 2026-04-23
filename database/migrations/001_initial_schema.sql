@@ -11,8 +11,8 @@ CREATE TYPE vessel_type AS ENUM (
   'DIPLOMATIC_AIRCRAFT','MILITARY_AIRCRAFT','COMMERCIAL_CHARTER'
 );
 CREATE TYPE request_status AS ENUM (
-  'DRAFT','SUBMITTED','UNDER_REVIEW','ALL_APPROVED',
-  'CLEARANCE_ISSUED','REJECTED','WITHDRAWN','EXPIRED'
+  'DRAFT','SUBMITTED','UNDER_REVIEW','APPROVED',
+  'FINALIZED','REJECTED','WITHDRAWN','EXPIRED'
 );
 CREATE TYPE review_status AS ENUM (
   'PENDING','APPROVED','REJECTED','INFORMATION_REQUESTED'
@@ -52,34 +52,37 @@ INSERT INTO departments (dept_code, dept_name, is_mandatory, review_order, conta
   ('DFA',   'Department of Foreign Affairs',                        FALSE, 6, 'clearances@dfa.gov.pg');
 
 CREATE TABLE requests (
-  request_id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  reference_number    VARCHAR(30) NOT NULL UNIQUE,
-  mission_id          UUID NOT NULL REFERENCES missions(mission_id) ON DELETE RESTRICT,
-  vessel_type         vessel_type NOT NULL,
-  vessel_name         VARCHAR(255) NOT NULL,
-  vessel_flag         CHAR(3) NOT NULL,
-  vessel_registration VARCHAR(100),
-  vessel_tonnage      NUMERIC(10,2),
-  vessel_length_m     NUMERIC(8,2),
-  port_of_entry       VARCHAR(255) NOT NULL,
-  port_of_exit        VARCHAR(255),
-  route_waypoints     JSONB DEFAULT '[]',
-  intended_activities TEXT,
-  proposed_entry_date DATE NOT NULL,
-  proposed_exit_date  DATE NOT NULL,
-  total_crew          SMALLINT NOT NULL DEFAULT 0,
-  total_passengers    SMALLINT NOT NULL DEFAULT 0,
-  personnel_manifest  JSONB DEFAULT '[]',
-  clearance_type      clearance_type NOT NULL DEFAULT 'STANDARD',
-  emergency_reason    TEXT,
-  status              request_status NOT NULL DEFAULT 'DRAFT',
-  submitted_at        TIMESTAMPTZ,
-  review_deadline     TIMESTAMPTZ,
-  overdue_at          TIMESTAMPTZ,
-  rejected_reason     TEXT,
-  final_clearance_id  UUID,
-  created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  request_id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  reference_number        VARCHAR(30) NOT NULL UNIQUE,
+  mission_id              UUID NOT NULL REFERENCES missions(mission_id) ON DELETE RESTRICT,
+  vessel_type             vessel_type NOT NULL,
+  vessel_name             VARCHAR(255) NOT NULL,
+  vessel_flag             CHAR(3) NOT NULL,
+  vessel_registration     VARCHAR(100),
+  vessel_tonnage          NUMERIC(10,2),
+  vessel_length_m         NUMERIC(8,2),
+  port_of_entry           VARCHAR(255) NOT NULL,
+  port_of_exit            VARCHAR(255),
+  route_waypoints         JSONB DEFAULT '[]',
+  intended_activities     TEXT,
+  proposed_entry_date     DATE NOT NULL,
+  proposed_exit_date      DATE NOT NULL,
+  total_crew              SMALLINT NOT NULL DEFAULT 0,
+  total_passengers        SMALLINT NOT NULL DEFAULT 0,
+  personnel_manifest      JSONB DEFAULT '[]',
+  clearance_type          clearance_type NOT NULL DEFAULT 'STANDARD',
+  emergency_reason        TEXT,
+  status                  request_status NOT NULL DEFAULT 'DRAFT',
+  submitted_at            TIMESTAMPTZ,
+  initial_review_deadline TIMESTAMPTZ,
+  agency_review_deadline  TIMESTAMPTZ,
+  issuance_deadline       TIMESTAMPTZ,
+  review_deadline         TIMESTAMPTZ, -- Deprecated, kept for compatibility if needed
+  overdue_at              TIMESTAMPTZ,
+  rejected_reason         TEXT,
+  final_clearance_id      UUID,
+  created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   CONSTRAINT chk_exit_after_entry CHECK (proposed_exit_date >= proposed_entry_date),
   CONSTRAINT chk_emergency_reason CHECK (
     clearance_type = 'STANDARD' OR emergency_reason IS NOT NULL
@@ -116,9 +119,15 @@ BEGIN
   IF NEW.status = 'SUBMITTED' AND (OLD.status IS NULL OR OLD.status = 'DRAFT') THEN
     NEW.submitted_at := NOW();
     IF NEW.clearance_type = 'EMERGENCY' THEN
-      NEW.review_deadline := NOW() + INTERVAL '24 hours';
+      NEW.initial_review_deadline := NOW() + INTERVAL '4 hours';
+      NEW.agency_review_deadline  := NOW() + INTERVAL '12 hours';
+      NEW.issuance_deadline       := NOW() + INTERVAL '24 hours';
+      NEW.review_deadline         := NEW.issuance_deadline;
     ELSE
-      NEW.review_deadline := add_working_days(NOW(), 10);
+      NEW.initial_review_deadline := add_working_days(NOW(), 2);
+      NEW.agency_review_deadline  := add_working_days(NOW(), 7); -- 2 (initial) + 5 (agency)
+      NEW.issuance_deadline       := add_working_days(NOW(), 10); -- 2 + 5 + 3
+      NEW.review_deadline         := NEW.issuance_deadline;
     END IF;
     NEW.overdue_at := NEW.review_deadline;
   END IF;
@@ -130,7 +139,7 @@ CREATE TRIGGER trg_submission_deadlines
   BEFORE INSERT OR UPDATE ON requests
   FOR EACH ROW EXECUTE FUNCTION set_submission_deadlines();
 
-CREATE TABLE department_reviews (
+CREATE TABLE workflow_steps (
   review_id        UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   request_id       UUID NOT NULL REFERENCES requests(request_id) ON DELETE CASCADE,
   dept_id          UUID NOT NULL REFERENCES departments(dept_id) ON DELETE RESTRICT,
@@ -147,21 +156,24 @@ CREATE TABLE department_reviews (
 );
 
 CREATE TRIGGER trg_reviews_updated_at
-  BEFORE INSERT OR UPDATE ON department_reviews
+  BEFORE INSERT OR UPDATE ON workflow_steps
   FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
 
 CREATE OR REPLACE FUNCTION set_reviewed_at()
 RETURNS TRIGGER LANGUAGE plpgsql AS $$
 BEGIN
-  IF NEW.status IN ('APPROVED','REJECTED') AND OLD.status = 'PENDING' THEN
+  IF NEW.status IN ('APPROVED','REJECTED','INFORMATION_REQUESTED') AND OLD.status = 'PENDING' THEN
     NEW.reviewed_at := NOW();
+    -- Automatically advance request to UNDER_REVIEW when first agency starts
+    UPDATE requests SET status = 'UNDER_REVIEW'
+    WHERE request_id = NEW.request_id AND status = 'SUBMITTED';
   END IF;
   RETURN NEW;
 END;
 $$;
 
 CREATE TRIGGER trg_set_reviewed_at
-  BEFORE UPDATE ON department_reviews
+  BEFORE UPDATE ON workflow_steps
   FOR EACH ROW EXECUTE FUNCTION set_reviewed_at();
 
 CREATE OR REPLACE FUNCTION check_all_reviews_complete()
@@ -173,31 +185,32 @@ DECLARE
 BEGIN
   SELECT COUNT(*) INTO total_mandatory FROM departments WHERE is_mandatory = TRUE;
   SELECT COUNT(*) INTO total_approved
-  FROM department_reviews dr JOIN departments d ON dr.dept_id = d.dept_id
+  FROM workflow_steps dr JOIN departments d ON dr.dept_id = d.dept_id
   WHERE dr.request_id = NEW.request_id AND d.is_mandatory = TRUE AND dr.status = 'APPROVED';
   SELECT EXISTS (
-    SELECT 1 FROM department_reviews dr JOIN departments d ON dr.dept_id = d.dept_id
+    SELECT 1 FROM workflow_steps dr JOIN departments d ON dr.dept_id = d.dept_id
     WHERE dr.request_id = NEW.request_id AND d.is_mandatory = TRUE AND dr.status = 'REJECTED'
   ) INTO any_rejected;
   IF any_rejected THEN
     UPDATE requests SET status = 'REJECTED' WHERE request_id = NEW.request_id;
   ELSIF total_approved >= total_mandatory THEN
-    UPDATE requests SET status = 'ALL_APPROVED' WHERE request_id = NEW.request_id;
+    UPDATE requests SET status = 'APPROVED' WHERE request_id = NEW.request_id;
   END IF;
   RETURN NEW;
 END;
 $$;
 
 CREATE TRIGGER trg_check_reviews_complete
-  AFTER INSERT OR UPDATE ON department_reviews
+  AFTER INSERT OR UPDATE ON workflow_steps
   FOR EACH ROW EXECUTE FUNCTION check_all_reviews_complete();
 
-CREATE TABLE final_clearances (
+CREATE TABLE clearance_log (
   clearance_id      UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   request_id        UUID NOT NULL UNIQUE REFERENCES requests(request_id) ON DELETE RESTRICT,
   issued_by_dept_id UUID NOT NULL REFERENCES departments(dept_id),
   clearance_number  VARCHAR(50) NOT NULL UNIQUE,
   digital_hash      VARCHAR(128) NOT NULL UNIQUE,
+  letter_hash       VARCHAR(128),
   qr_payload        TEXT NOT NULL,
   valid_from        DATE NOT NULL,
   valid_until       DATE NOT NULL,
@@ -215,21 +228,21 @@ RETURNS TRIGGER LANGUAGE plpgsql AS $$
 DECLARE req_status request_status;
 BEGIN
   SELECT status INTO req_status FROM requests WHERE request_id = NEW.request_id;
-  IF req_status != 'ALL_APPROVED' THEN
+  IF req_status != 'APPROVED' THEN
     RAISE EXCEPTION 'Cannot issue clearance: request % has status %. All agencies must approve first.', NEW.request_id, req_status;
   END IF;
-  UPDATE requests SET status = 'CLEARANCE_ISSUED', final_clearance_id = NEW.clearance_id
+  UPDATE requests SET status = 'FINALIZED', final_clearance_id = NEW.clearance_id
   WHERE request_id = NEW.request_id;
   RETURN NEW;
 END;
 $$;
 
 CREATE TRIGGER trg_guard_clearance
-  AFTER INSERT ON final_clearances
+  AFTER INSERT ON clearance_log
   FOR EACH ROW EXECUTE FUNCTION guard_clearance_issuance();
 
 ALTER TABLE requests ADD CONSTRAINT fk_final_clearance
-  FOREIGN KEY (final_clearance_id) REFERENCES final_clearances(clearance_id) DEFERRABLE INITIALLY DEFERRED;
+  FOREIGN KEY (final_clearance_id) REFERENCES clearance_log(clearance_id) DEFERRABLE INITIALLY DEFERRED;
 
 CREATE TABLE audit_log (
   log_id      UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -248,7 +261,7 @@ BEGIN
   IF TG_TABLE_NAME = 'requests' AND OLD.status IS DISTINCT FROM NEW.status THEN
     INSERT INTO audit_log(entity_type,entity_id,old_status,new_status)
     VALUES ('REQUEST',NEW.request_id,OLD.status::TEXT,NEW.status::TEXT);
-  ELSIF TG_TABLE_NAME = 'department_reviews' AND OLD.status IS DISTINCT FROM NEW.status THEN
+  ELSIF TG_TABLE_NAME = 'workflow_steps' AND OLD.status IS DISTINCT FROM NEW.status THEN
     INSERT INTO audit_log(entity_type,entity_id,old_status,new_status)
     VALUES ('REVIEW',NEW.review_id,OLD.status::TEXT,NEW.status::TEXT);
   END IF;
@@ -257,14 +270,18 @@ END;
 $$;
 
 CREATE TRIGGER trg_audit_requests AFTER UPDATE ON requests FOR EACH ROW EXECUTE FUNCTION log_status_change();
-CREATE TRIGGER trg_audit_reviews  AFTER UPDATE ON department_reviews FOR EACH ROW EXECUTE FUNCTION log_status_change();
+CREATE TRIGGER trg_audit_reviews  AFTER UPDATE ON workflow_steps FOR EACH ROW EXECUTE FUNCTION log_status_change();
 
 CREATE OR REPLACE VIEW v_request_dashboard AS
 SELECT r.request_id, r.reference_number, m.mission_name, m.country_name,
   r.vessel_name, r.vessel_type, r.clearance_type, r.status,
-  r.proposed_entry_date, r.proposed_exit_date, r.submitted_at, r.review_deadline,
+  r.proposed_entry_date, r.proposed_exit_date, r.submitted_at,
+  r.initial_review_deadline, r.agency_review_deadline, r.issuance_deadline, r.review_deadline,
   CASE
-    WHEN r.status NOT IN ('SUBMITTED','UNDER_REVIEW') THEN NULL
+    WHEN r.status = 'SUBMITTED' AND r.initial_review_deadline < NOW() THEN 'OVERDUE_INITIAL'
+    WHEN r.status = 'UNDER_REVIEW' AND r.agency_review_deadline < NOW() THEN 'OVERDUE_AGENCY'
+    WHEN r.status = 'APPROVED' AND r.issuance_deadline < NOW() THEN 'OVERDUE_ISSUANCE'
+    WHEN r.status NOT IN ('SUBMITTED','UNDER_REVIEW','APPROVED') THEN NULL
     WHEN r.review_deadline < NOW() THEN 'OVERDUE'
     WHEN r.review_deadline < NOW() + INTERVAL '2 days' THEN 'DUE_SOON'
     ELSE 'ON_TRACK'
@@ -275,25 +292,25 @@ SELECT r.request_id, r.reference_number, m.mission_name, m.country_name,
   (SELECT COUNT(*) FROM departments WHERE is_mandatory=TRUE) AS total_mandatory
 FROM requests r
 JOIN missions m ON r.mission_id = m.mission_id
-LEFT JOIN department_reviews dr ON r.request_id = dr.request_id
+LEFT JOIN workflow_steps dr ON r.request_id = dr.request_id
 GROUP BY r.request_id, m.mission_name, m.country_name;
 
 CREATE OR REPLACE VIEW v_clearance_verify AS
-SELECT fc.clearance_id, fc.clearance_number, fc.digital_hash,
+SELECT fc.clearance_id, fc.clearance_number, fc.digital_hash, fc.letter_hash,
   fc.valid_from, fc.valid_until, fc.is_revoked, fc.issued_at,
   fc.issued_by_officer, fc.conditions,
   r.reference_number, r.vessel_name, r.vessel_type, r.vessel_flag,
   r.vessel_registration, r.port_of_entry, r.port_of_exit,
   r.route_waypoints, r.total_crew, r.total_passengers, r.personnel_manifest,
   m.mission_name, m.country_name
-FROM final_clearances fc
+FROM clearance_log fc
 JOIN requests r ON fc.request_id = r.request_id
 JOIN missions m ON r.mission_id = m.mission_id;
 
 CREATE INDEX idx_requests_mission  ON requests(mission_id);
 CREATE INDEX idx_requests_status   ON requests(status);
 CREATE INDEX idx_requests_deadline ON requests(review_deadline);
-CREATE INDEX idx_reviews_request   ON department_reviews(request_id);
-CREATE INDEX idx_reviews_dept      ON department_reviews(dept_id);
-CREATE INDEX idx_clearances_hash   ON final_clearances(digital_hash);
+CREATE INDEX idx_reviews_request   ON workflow_steps(request_id);
+CREATE INDEX idx_reviews_dept      ON workflow_steps(dept_id);
+CREATE INDEX idx_clearances_hash   ON clearance_log(digital_hash);
 CREATE INDEX idx_audit_entity      ON audit_log(entity_type, entity_id);

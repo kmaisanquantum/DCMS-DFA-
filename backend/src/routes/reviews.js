@@ -19,7 +19,7 @@ router.put('/:id', [
   try {
     const { status, comments, conditions, assigned_to } = req.body;
     const { rows: [updated] } = await db.query(`
-      UPDATE department_reviews
+      UPDATE workflow_steps
       SET status=$1, comments=$2, conditions=$3, assigned_to=$4
       WHERE review_id=$5
       RETURNING *
@@ -35,7 +35,7 @@ router.get('/:id', param('id').isUUID(), validate, async (req, res, next) => {
   try {
     const { rows: [review] } = await db.query(`
       SELECT dr.*, d.dept_code, d.dept_name, r.reference_number, r.vessel_name
-      FROM department_reviews dr
+      FROM workflow_steps dr
       JOIN departments d ON dr.dept_id = d.dept_id
       JOIN requests r ON dr.request_id = r.request_id
       WHERE dr.review_id = $1

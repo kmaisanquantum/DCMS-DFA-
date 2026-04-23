@@ -45,7 +45,7 @@ async function notifyDepartments(pool, reviews, request) {
           </div>`,
       });
       await pool.query(
-        'UPDATE department_reviews SET notified_at = NOW() WHERE review_id = $1',
+        'UPDATE workflow_steps SET notified_at = NOW() WHERE review_id = $1',
         [review.review_id]
       );
       logger.info(`Notified ${review.dept_code} for request ${request.reference_number}`);

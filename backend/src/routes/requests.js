@@ -61,7 +61,7 @@ router.post('/', [
       const reviewRows = [];
       for (const dept of departments) {
         const { rows: [review] } = await client.query(
-          `INSERT INTO department_reviews (request_id, dept_id) VALUES ($1,$2) RETURNING review_id`,
+        `INSERT INTO workflow_steps (request_id, dept_id) VALUES ($1,$2) RETURNING review_id`,
           [newRequest.request_id, dept.dept_id]
         );
         reviewRows.push({ ...review, ...dept });
@@ -74,9 +74,16 @@ router.post('/', [
       return { newRequest, reviewRows, departments, mission };
     });
 
-    setImmediate(() => notifyDepartments(db, result.reviewRows, {
-      ...result.newRequest, ...result.mission
-    }));
+    setImmediate(async () => {
+      await notifyDepartments(db, result.reviewRows, {
+        ...result.newRequest, ...result.mission
+      });
+      // Once departments are notified, the request is officially 'UNDER_REVIEW'
+      await db.query(
+        "UPDATE requests SET status = 'UNDER_REVIEW' WHERE request_id = $1",
+        [result.newRequest.request_id]
+      );
+    });
 
     logger.info(`New request submitted: ${result.newRequest.reference_number}`);
     res.status(201).json({
@@ -122,7 +129,7 @@ router.get('/:id', param('id').isUUID(), validate, async (req, res, next) => {
       SELECT dr.review_id, dr.status, dr.comments, dr.conditions,
              dr.reviewed_at, dr.notified_at, dr.assigned_to,
              d.dept_code, d.dept_name, d.is_mandatory
-      FROM department_reviews dr
+      FROM workflow_steps dr
       JOIN departments d ON dr.dept_id = d.dept_id
       WHERE dr.request_id = $1
       ORDER BY d.review_order

@@ -34,4 +34,7 @@ export const fetchMissions    = ()     => api.get('/api/missions').then(r => r.d
 export const createMission    = (body) => api.post('/api/missions', body).then(r => r.data);
 export const fetchDepartments = ()     => api.get('/api/departments').then(r => r.data);
 
+// Reports
+export const fetchStats       = ()     => api.get('/api/reports/stats').then(r => r.data);
+
 export default api;
