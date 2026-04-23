@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { fetchRequests } from '../utils/api';
+import { fetchRequests, fetchStats } from '../utils/api';
 import { fmt, isOverdue } from '../utils/helpers';
 import { StatusPill, ProgressBar, StatCard, PageHeader, Button, Spinner, EmptyState } from '../components/UI';
 
@@ -21,6 +21,12 @@ export default function DashboardPage() {
     queryKey: ['requests'],
     queryFn: () => fetchRequests({ limit: 100 }),
     refetchInterval: 30000,
+  });
+
+  const { data: statsData } = useQuery({
+    queryKey: ['stats'],
+    queryFn: fetchStats,
+    refetchInterval: 60000,
   });
 
   const requests = data?.requests || [];
@@ -57,12 +63,26 @@ export default function DashboardPage() {
         }
       />
 
+      {/* SLA Alerts */}
+      {statsData?.sla_alerts?.length > 0 && (
+        <div style={{ padding: '0 20px', marginBottom: 20 }}>
+          <div style={{ background:'var(--red-dim)', border:'1px solid var(--red)', borderRadius:'var(--radius-md)', padding: '12px 16px' }}>
+            <div style={{ color:'var(--red-text)', fontWeight:700, fontSize:13, marginBottom:4 }}>⚠️ SLA Alerts: Pending Agency Reviews</div>
+            {statsData.sla_alerts.map((alert, idx) => (
+              <div key={idx} style={{ fontSize:12, color:'var(--red-text)', opacity:0.9 }}>
+                • <strong>{alert.dept_code}</strong> is approaching deadline for request <strong>{alert.reference_number}</strong> ({fmt(alert.agency_review_deadline)})
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Stats */}
       <div style={{ display:'flex', gap:14, marginBottom:28, flexWrap:'wrap', padding: '0 20px' }}>
         <StatCard label="Total"    value={stats.total}   icon="📋" />
         <StatCard label="Pending"  value={stats.pending} icon="⏳" color="var(--yellow-text)" />
         <StatCard label="Overdue"  value={stats.overdue} icon="🔴" color="var(--red-text)" />
-        <StatCard label="Issued"   value={stats.issued}  icon="✅" color="var(--green-text)" />
+        <StatCard label="Avg. Days" value={statsData?.avg_processing_days || '—'} icon="⏱️" color="var(--blue-text)" />
       </div>
 
       {/* Toolbar */}

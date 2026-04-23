@@ -14,11 +14,12 @@ function generateDigitalHash(clearanceNumber, requestId, issuedAt) {
  * Build the compact JSON payload that will be encoded in the QR image.
  * Kept small so QR density stays scannable.
  */
-function buildQRPayload(clearanceNumber, digitalHash, validFrom, validUntil) {
+function buildQRPayload(clearanceNumber, digitalHash, validFrom, validUntil, letterHash) {
   return JSON.stringify({
     sys: 'DCMS-PNG',
     cn: clearanceNumber,
     h: digitalHash,
+    lh: letterHash || null,
     vf: validFrom,
     vu: validUntil,
     url: `${process.env.PUBLIC_BASE_URL || 'https://dcms.dfa.gov.pg'}/verify/${digitalHash}`,
@@ -45,7 +46,7 @@ async function generateReferenceNumber(client) {
 async function generateClearanceNumber(client) {
   const year = new Date().getFullYear();
   const { rows } = await client.query(
-    `SELECT COUNT(*) AS cnt FROM final_clearances WHERE EXTRACT(YEAR FROM issued_at) = $1`,
+    `SELECT COUNT(*) AS cnt FROM clearance_log WHERE EXTRACT(YEAR FROM issued_at) = $1`,
     [year]
   );
   const seq = String(parseInt(rows[0].cnt) + 1).padStart(6, '0');
