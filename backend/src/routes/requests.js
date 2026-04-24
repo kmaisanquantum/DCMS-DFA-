@@ -14,7 +14,7 @@ const validate = (req, res, next) => {
 // POST /api/requests — submit new clearance request
 router.post('/', [
   body('mission_id').isUUID(),
-  body('vessel_type').isIn(['NAVAL_VESSEL','COAST_GUARD','RESEARCH_VESSEL','DIPLOMATIC_AIRCRAFT','MILITARY_AIRCRAFT','COMMERCIAL_CHARTER']),
+  body('vessel_type').isIn(['NAVAL_VESSEL','COAST_GUARD','RESEARCH_VESSEL','DIPLOMATIC_AIRCRAFT','MILITARY_AIRCRAFT','COMMERCIAL_CHARTER','RADIO_FREQUENCY','DIPLOMATIC_POUCH']),
   body('vessel_name').trim().notEmpty(),
   body('vessel_flag').trim().isLength({ min:2, max:3 }),
   body('port_of_entry').trim().notEmpty(),
