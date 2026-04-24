@@ -24,8 +24,8 @@ services:
   # ── Node.js API ─────────────────────────────────────────
   backend:
     build:
-      context: ./backend
-      dockerfile: ../docker/Dockerfile.backend
+      context: .
+      dockerfile: ./docker/Dockerfile.backend
     container_name: dcms_backend
     restart: unless-stopped
     depends_on:
@@ -53,8 +53,8 @@ services:
   # ── React Frontend ──────────────────────────────────────
   frontend:
     build:
-      context: ./frontend
-      dockerfile: ../docker/Dockerfile.frontend
+      context: .
+      dockerfile: ./docker/Dockerfile.frontend
       args:
         REACT_APP_API_URL: ${REACT_APP_API_URL:-http://localhost:3001}
     container_name: dcms_frontend
