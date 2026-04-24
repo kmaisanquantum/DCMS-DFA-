@@ -244,8 +244,15 @@ export default function RequestDetailPage() {
                   </Button>
                 </div>
               ) : (
-                <div style={{ textAlign:'center', color:'var(--text-muted)', fontSize:12 }}>
-                  {request.status === 'CLEARANCE_ISSUED' ? '✓ Issued' : 'Waiting for approvals...'}
+                <div style={{ textAlign:'center', color:'var(--text-muted)', fontSize:12, display:'flex', flexDirection:'column', gap:10 }}>
+                  {request.status === 'FINALIZED' ? (
+                    <>
+                      <div style={{ color: 'var(--green-text)', fontWeight: 700 }}>✓ Clearance Issued</div>
+                      <Button variant="secondary" onClick={() => setQrData(request.clearance)}>
+                         📜 View QR Certificate
+                      </Button>
+                    </>
+                  ) : 'Waiting for approvals...'}
                 </div>
               )}
             </Card>

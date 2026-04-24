@@ -24,7 +24,7 @@ router.put('/:id', [
     const result = await db.transaction(async (client) => {
       // 1. Fetch current review details including dept and request info
       const { rows: [review] } = await client.query(`
-        SELECT ws.*, d.dept_code, r.status as request_status, r.reference_number,
+        SELECT ws.*, d.dept_code, r.status as request_status, r.reference_number, r.vessel_name, r.is_emergency,
                m.mission_name, m.country_name, r.proposed_entry_date, r.clearance_type, r.review_deadline
         FROM workflow_steps ws
         JOIN departments d ON ws.dept_id = d.dept_id
