@@ -189,7 +189,9 @@ DECLARE
   total_mandatory INT;
   total_approved  INT;
   any_rejected    BOOLEAN;
+  req_is_emergency BOOLEAN;
 BEGIN
+  SELECT is_emergency OR (clearance_type = 'EMERGENCY') INTO req_is_emergency FROM requests WHERE request_id = NEW.request_id;
   SELECT COUNT(*) INTO total_mandatory FROM departments WHERE is_mandatory = TRUE;
   SELECT COUNT(*) INTO total_approved
   FROM workflow_steps dr JOIN departments d ON dr.dept_id = d.dept_id
@@ -198,10 +200,15 @@ BEGIN
     SELECT 1 FROM workflow_steps dr JOIN departments d ON dr.dept_id = d.dept_id
     WHERE dr.request_id = NEW.request_id AND d.is_mandatory = TRUE AND dr.status = 'REJECTED'
   ) INTO any_rejected;
+
   IF any_rejected THEN
     UPDATE requests SET status = 'REJECTED' WHERE request_id = NEW.request_id;
   ELSIF total_approved >= total_mandatory THEN
-    UPDATE requests SET status = 'APPROVED' WHERE request_id = NEW.request_id;
+    -- Final Issuance SLA: 3 working days (or 12h for emergency)
+    UPDATE requests
+    SET status = 'APPROVED',
+        issuance_deadline = CASE WHEN req_is_emergency THEN NOW() + INTERVAL '12 hours' ELSE add_working_days(NOW(), 3) END
+    WHERE request_id = NEW.request_id;
   END IF;
   RETURN NEW;
 END;

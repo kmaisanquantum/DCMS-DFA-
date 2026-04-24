@@ -22,7 +22,10 @@ router.post('/', [
 
     const result = await db.transaction(async (client) => {
       const { rows: [request] } = await client.query(
-        `SELECT * FROM requests WHERE request_id = $1 FOR UPDATE`, [request_id]
+        `SELECT r.*, cl.clearance_id
+         FROM requests r
+         LEFT JOIN clearance_log cl ON r.request_id = cl.request_id
+         WHERE r.request_id = $1 FOR UPDATE`, [request_id]
       );
       if (!request) throw Object.assign(new Error('Request not found'), { status: 404 });
       if (request.status !== 'APPROVED') {
@@ -45,6 +48,7 @@ router.post('/', [
       );
 
       // Add 'Emergency' tag to metadata if applicable
+      const meta = request.is_emergency ? { ...request.category_metadata, clearance_priority: 'EMERGENCY' } : request.category_metadata;
 
       const { rows: [clearance] } = await client.query(`
         INSERT INTO clearance_log
