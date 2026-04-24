@@ -283,6 +283,46 @@ CREATE TABLE internal_messages (
   created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE pending_config_changes (
+  change_id     UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  category_id   UUID REFERENCES clearance_categories(category_id),
+  proposed_data JSONB NOT NULL,
+  requested_by  VARCHAR(255) NOT NULL,
+  approved_by   JSONB NOT NULL DEFAULT '[]', -- List of dept_codes that signed
+  status        VARCHAR(20) NOT NULL DEFAULT 'PENDING', -- 'PENDING', 'APPROVED', 'REJECTED'
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE system_config_history (
+  version_id    UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  change_id     UUID REFERENCES pending_config_changes(change_id),
+  entity_type   VARCHAR(50) NOT NULL, -- 'CATEGORY'
+  entity_id     UUID NOT NULL,
+  old_data      JSONB,
+  new_data      JSONB,
+  applied_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE issue_tracker (
+  issue_id      UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  request_id    UUID NOT NULL REFERENCES requests(request_id) ON DELETE CASCADE,
+  dept_id       UUID NOT NULL REFERENCES departments(dept_id),
+  issue_type    VARCHAR(100) NOT NULL, -- 'BOTTLENECK', 'DOCUMENTATION_MISSING', 'SLA_RISK'
+  description   TEXT NOT NULL,
+  status        VARCHAR(20) NOT NULL DEFAULT 'OPEN', -- 'OPEN', 'RESOLVED'
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  resolved_at   TIMESTAMPTZ
+);
+
+CREATE TABLE non_compliance_logs (
+  compliance_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  request_id    UUID NOT NULL REFERENCES requests(request_id) ON DELETE CASCADE,
+  violation_type VARCHAR(100) NOT NULL, -- '10_DAY_RULE', 'SECURITY_FAILURE', 'AGENCY_REJECTION'
+  notice_text    TEXT NOT NULL,
+  repercussions  TEXT,
+  logged_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE TABLE system_logs (
   log_id      UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   entity_type VARCHAR(50) NOT NULL,
