@@ -141,4 +141,43 @@ async function sendAgencyReminder(pool, review, request) {
   }
 }
 
-module.exports = { notifyDepartments, notifyDFA_PPOC, sendAgencyReminder };
+async function sendDenialNotice(pool, request, rejectionDetails) {
+  try {
+    const { rows: [mission] } = await pool.query(
+      "SELECT contact_email FROM missions WHERE mission_id = $1",
+      [request.mission_id]
+    );
+    if (!mission || !mission.contact_email) return;
+
+    await transporter.sendMail({
+      from: `"DCMS Notifications" <noreply@dfa.gov.pg>`,
+      to: mission.contact_email,
+      subject: `❌ [DENIAL OF CLEARANCE] Request ${request.reference_number}`,
+      html: `
+        <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto">
+          <div style="background:#dc2626;color:#fff;padding:20px;border-radius:8px 8px 0 0">
+            <h2 style="margin:0">🇵🇬 DCMS — Denial of Clearance</h2>
+          </div>
+          <div style="border:1px solid #ddd;border-top:none;padding:24px;border-radius:0 0 8px 8px">
+            <p>Formal Notice to the <strong>${request.mission_name || 'Foreign Mission'}</strong>,</p>
+            <p>Your request for diplomatic clearance (Ref: ${request.reference_number}) has been <strong>REJECTED</strong>.</p>
+
+            <div style="background:#fee2e2;padding:16px;border-radius:6px;margin:16px 0;border:1px solid #fecaca;color:#991b1b">
+              <h4 style="margin:0 0 8px 0">Reason for Non-Compliance:</h4>
+              <p style="margin:0;font-size:14px">${rejectionDetails.comments || 'Non-compliance with national standards.'}</p>
+              <p style="margin-top:8px;font-size:12px;font-style:italic">Cited SOP Procedure: Section 7.1 (Compliance and Penalties)</p>
+            </div>
+
+            <p style="font-size:13px;color:#4b5563">
+              If you wish to appeal this decision, please contact the DFA Primary Point of Contact within 48 hours.
+            </p>
+          </div>
+        </div>`,
+    });
+    logger.info(`Denial notice sent for request ${request.reference_number}`);
+  } catch (err) {
+    logger.error(`Failed to send denial notice: ${err.message}`);
+  }
+}
+
+module.exports = { notifyDepartments, notifyDFA_PPOC, sendAgencyReminder, sendDenialNotice };

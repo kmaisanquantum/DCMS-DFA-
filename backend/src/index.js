@@ -16,6 +16,7 @@ const clearancesRouter = require('./routes/clearances');
 const missionsRouter   = require('./routes/missions');
 const reportsRouter    = require('./routes/reports');
 const categoriesRouter = require('./routes/categories');
+const messagesRouter   = require('./routes/messages');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -70,6 +71,7 @@ app.use('/api/clearances', clearancesRouter);
 app.use('/api/missions',   missionsRouter);
 app.use('/api/reports',    reportsRouter);
 app.use('/api/categories', categoriesRouter);
+app.use('/api/messages',   messagesRouter);
 
 // ── Departments (read-only) ────────────────────
 const db = require('./db/pool');
