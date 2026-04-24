@@ -1,7 +1,7 @@
 const router = require('express').Router();
 const { body, param, validationResult } = require('express-validator');
 const db = require('../db/pool');
-const { notifyDepartments } = require('../utils/mailer');
+const { notifyDepartments, sendDenialNotice } = require('../utils/mailer');
 
 const validate = (req, res, next) => {
   const errors = validationResult(req);
@@ -25,7 +25,7 @@ router.put('/:id', [
       // 1. Fetch current review details including dept and request info
       const { rows: [review] } = await client.query(`
         SELECT ws.*, d.dept_code, r.status as request_status, r.reference_number, r.vessel_name, r.is_emergency,
-               m.mission_name, m.country_name, r.proposed_entry_date, r.clearance_type, r.review_deadline
+               r.mission_id, m.mission_name, m.country_name, r.proposed_entry_date, r.clearance_type, r.review_deadline
         FROM workflow_steps ws
         JOIN departments d ON ws.dept_id = d.dept_id
         JOIN requests r ON ws.request_id = r.request_id
@@ -63,6 +63,11 @@ router.put('/:id', [
 
       return { updated, notify: false };
     });
+
+    // 4. Send Denial notice if rejected
+    if (result.updated.status === 'REJECTED') {
+      setImmediate(() => sendDenialNotice(db, result.request, result.updated));
+    }
 
     if (result.notify) {
       setImmediate(() => notifyDepartments(db, result.reviews, result.request));

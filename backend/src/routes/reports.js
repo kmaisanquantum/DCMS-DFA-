@@ -63,4 +63,39 @@ router.get('/internal-audit', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// GET /api/reports/compliance-scorecard — flag mission/agency SLA failures
+router.get('/compliance-scorecard', async (req, res, next) => {
+  try {
+    const scorecard = {};
+
+    // 1. Agency review failures (> 5 days)
+    const { rows: agencyFailures } = await db.query(`
+      SELECT
+        d.dept_code,
+        COUNT(ws.review_id) as total_failures
+      FROM workflow_steps ws
+      JOIN departments d ON ws.dept_id = d.dept_id
+      WHERE ws.status IN ('APPROVED', 'REJECTED')
+        AND EXTRACT(EPOCH FROM (ws.reviewed_at - ws.created_at)) / 86400 > 5
+      GROUP BY d.dept_code
+    `);
+    scorecard.agency_failures = agencyFailures;
+
+    // 2. Mission submission failures (standard request < 10 days before entry)
+    const { rows: missionFailures } = await db.query(`
+      SELECT
+        m.mission_name,
+        COUNT(r.request_id) as late_submissions
+      FROM requests r
+      JOIN missions m ON r.mission_id = m.mission_id
+      WHERE r.clearance_type = 'STANDARD'
+        AND EXTRACT(EPOCH FROM (r.proposed_entry_date::timestamp - r.submitted_at)) / 86400 < 10
+      GROUP BY m.mission_name
+    `);
+    scorecard.mission_failures = missionFailures;
+
+    res.json(scorecard);
+  } catch (err) { next(err); }
+});
+
 module.exports = router;

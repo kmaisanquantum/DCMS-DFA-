@@ -24,7 +24,7 @@ router.post('/', [
 ], validate, async (req, res, next) => {
   try {
     const {
-      mission_id, category_id, category_metadata, is_emergency,
+      mission_id, category_id, category_metadata, is_emergency, is_overdrive,
       port_of_entry, port_of_exit,
       route_waypoints, intended_activities, proposed_entry_date, proposed_exit_date,
       total_crew, total_passengers, personnel_manifest, clearance_type, emergency_reason,
@@ -61,16 +61,16 @@ router.post('/', [
       const { rows: [newRequest] } = await client.query(`
         INSERT INTO requests (
           reference_number, mission_id, category_id, category_metadata,
-          vessel_name, security_coordination_required, is_emergency,
+          vessel_name, security_coordination_required, is_emergency, is_overdrive,
           port_of_entry, port_of_exit,
           route_waypoints, intended_activities, proposed_entry_date, proposed_exit_date,
           total_crew, total_passengers, personnel_manifest, clearance_type, emergency_reason, status
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,'SUBMITTED')
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,'SUBMITTED')
         RETURNING *
       `, [
         referenceNumber, mission_id, category_id, JSON.stringify(category_metadata || {}),
         category_metadata?.vessel_name || category_metadata?.aircraft_type || category_metadata?.equipment_type || 'Diplomatic Request',
-        securityCoordRequired, !!is_emergency,
+        securityCoordRequired, !!is_emergency, !!is_overdrive,
         port_of_entry, port_of_exit||null,
         JSON.stringify(route_waypoints||[]), intended_activities||null,
         proposed_entry_date, proposed_exit_date,
@@ -110,15 +110,26 @@ router.post('/', [
         ...result.newRequest, ...result.mission
       }, result.category.display_name);
 
-      // Emergency logic: Notify ALL agencies immediately and move to UNDER_REVIEW
-      if (result.newRequest.is_emergency || clearance_type === 'EMERGENCY') {
+      // Specialized Workflow Trigger Logic
+      const isUrgent = result.newRequest.is_emergency || result.newRequest.is_overdrive ||
+                       result.category.category_code === 'DIPLOMATIC_POUCH' || clearance_type === 'EMERGENCY';
+
+      if (isUrgent) {
         await db.query(
           "UPDATE requests SET status = 'UNDER_REVIEW' WHERE request_id = $1",
           [result.newRequest.request_id]
         );
-        // Add "HOD Escalation" tag to notifications if needed
+
+        // Pouch logic (4.4.1): Immediate notification to PNG Customs
+        if (result.category.category_code === 'DIPLOMATIC_POUCH') {
+          logger.info(`Diplomatic Pouch exchange triggered. Notifying PNG Customs for ${result.newRequest.reference_number}`);
+          // Mock call to Customs system or specific mailer logic
+        }
+
+        // Add "Escalation" tag to notifications for Overdrive/Emergency
         await notifyDepartments(db, result.reviewRows, {
-          ...result.newRequest, ...result.mission, escalation: true
+          ...result.newRequest, ...result.mission,
+          escalation: result.newRequest.is_overdrive || result.newRequest.is_emergency || clearance_type === 'EMERGENCY'
         });
       }
     });
@@ -158,6 +169,7 @@ router.get('/', async (req, res, next) => {
 // GET /api/requests/:id — single request with reviews
 router.get('/:id', param('id').isUUID(), validate, async (req, res, next) => {
   try {
+    const isLiaison = req.query.mode === 'liaison';
     const { rows: [request] } = await db.query(
       `SELECT r.*, c.display_name AS category_name, c.metadata_schema, m.mission_name, m.country_name,
               cl.clearance_id, cl.clearance_number, cl.digital_hash, cl.qr_payload, cl.issued_at
@@ -170,14 +182,17 @@ router.get('/:id', param('id').isUUID(), validate, async (req, res, next) => {
     if (!request) return res.status(404).json({ error: 'Request not found' });
 
     const { rows: reviews } = await db.query(`
-      SELECT dr.review_id, dr.status, dr.comments, dr.conditions,
-             dr.reviewed_at, dr.notified_at, dr.assigned_to,
+      SELECT dr.review_id, dr.status,
+             CASE WHEN $2 THEN NULL ELSE dr.comments END as comments,
+             CASE WHEN $2 THEN NULL ELSE dr.conditions END as conditions,
+             dr.reviewed_at, dr.notified_at,
+             CASE WHEN $2 THEN NULL ELSE dr.assigned_to END as assigned_to,
              d.dept_code, d.dept_name, d.is_mandatory
       FROM workflow_steps dr
       JOIN departments d ON dr.dept_id = d.dept_id
       WHERE dr.request_id = $1
       ORDER BY d.review_order
-    `, [req.params.id]);
+    `, [req.params.id, isLiaison]);
 
     const clearance = request.clearance_id ? {
       clearance_id: request.clearance_id,

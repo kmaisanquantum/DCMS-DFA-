@@ -76,6 +76,7 @@ CREATE TABLE requests (
   category_metadata       JSONB NOT NULL DEFAULT '{}',
   security_coordination_required BOOLEAN NOT NULL DEFAULT FALSE,
   is_emergency            BOOLEAN NOT NULL DEFAULT FALSE,
+  is_overdrive            BOOLEAN NOT NULL DEFAULT FALSE,
   clearance_type          clearance_type NOT NULL DEFAULT 'STANDARD',
   emergency_reason        TEXT,
   status                  request_status NOT NULL DEFAULT 'DRAFT',
@@ -122,21 +123,36 @@ CREATE TRIGGER trg_categories_updated_at BEFORE UPDATE ON clearance_categories F
 
 CREATE OR REPLACE FUNCTION set_submission_deadlines()
 RETURNS TRIGGER LANGUAGE plpgsql AS $$
+DECLARE
+  cat_code VARCHAR(50);
 BEGIN
   IF NEW.status = 'SUBMITTED' AND (OLD.status IS NULL OR OLD.status = 'DRAFT') THEN
     NEW.submitted_at := NOW();
-    IF NEW.is_emergency = TRUE OR NEW.clearance_type = 'EMERGENCY' THEN
+
+    SELECT category_code INTO cat_code FROM clearance_categories WHERE category_id = NEW.category_id;
+
+    IF NEW.is_overdrive = TRUE THEN
+      -- Overdrive Logic (5.1): Global 24-hour SLA
+      NEW.initial_review_deadline := NOW() + INTERVAL '2 hours';
+      NEW.agency_review_deadline  := NOW() + INTERVAL '18 hours';
+      NEW.issuance_deadline       := NOW() + INTERVAL '24 hours';
+    ELSIF cat_code = 'DIPLOMATIC_POUCH' THEN
+      -- Diplomatic Pouch Module (4.4.1): 48 hours notice, 24h approval
+      NEW.initial_review_deadline := NOW() + INTERVAL '4 hours';
+      NEW.agency_review_deadline  := NOW() + INTERVAL '20 hours';
+      NEW.issuance_deadline       := NOW() + INTERVAL '24 hours';
+    ELSIF NEW.is_emergency = TRUE OR NEW.clearance_type = 'EMERGENCY' THEN
       NEW.initial_review_deadline := NOW() + INTERVAL '4 hours';
       NEW.agency_review_deadline  := NOW() + INTERVAL '12 hours';
       NEW.issuance_deadline       := NOW() + INTERVAL '24 hours';
-      NEW.review_deadline         := NEW.issuance_deadline;
     ELSE
       NEW.initial_review_deadline := add_working_days(NOW(), 2);
       NEW.agency_review_deadline  := add_working_days(NOW(), 7);
       NEW.issuance_deadline       := add_working_days(NOW(), 10);
-      NEW.review_deadline         := NEW.issuance_deadline;
     END IF;
-    NEW.overdue_at := NEW.review_deadline;
+
+    NEW.review_deadline := NEW.issuance_deadline;
+    NEW.overdue_at      := NEW.review_deadline;
   END IF;
   RETURN NEW;
 END;
@@ -258,6 +274,15 @@ CREATE TRIGGER trg_guard_clearance
 ALTER TABLE requests ADD CONSTRAINT fk_final_clearance
   FOREIGN KEY (final_clearance_id) REFERENCES clearance_log(clearance_id) DEFERRABLE INITIALLY DEFERRED;
 
+CREATE TABLE internal_messages (
+  message_id    UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  request_id    UUID NOT NULL REFERENCES requests(request_id) ON DELETE CASCADE,
+  sender_dept_id UUID NOT NULL REFERENCES departments(dept_id),
+  sender_name   VARCHAR(255) NOT NULL,
+  message_text  TEXT NOT NULL,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE TABLE system_logs (
   log_id      UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   entity_type VARCHAR(50) NOT NULL,
@@ -278,6 +303,14 @@ $$;
 
 CREATE TRIGGER trg_protect_system_logs
   BEFORE UPDATE OR DELETE ON system_logs
+  FOR EACH ROW EXECUTE FUNCTION protect_immutable_logs();
+
+CREATE TRIGGER trg_protect_requests
+  BEFORE DELETE ON requests
+  FOR EACH ROW EXECUTE FUNCTION protect_immutable_logs();
+
+CREATE TRIGGER trg_protect_clearances
+  BEFORE DELETE ON clearance_log
   FOR EACH ROW EXECUTE FUNCTION protect_immutable_logs();
 
 CREATE OR REPLACE FUNCTION log_status_change()
