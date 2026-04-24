@@ -68,6 +68,19 @@ router.put('/:id', [
       setImmediate(() => notifyDepartments(db, result.reviews, result.request));
     }
 
+    // Check if the request is now APPROVED to notify DFA PPOC for final issuance
+    const { rows: [finalCheck] } = await db.query(
+      "SELECT status, reference_number, mission_id FROM requests WHERE request_id = $1",
+      [result.updated.request_id]
+    );
+    if (finalCheck && finalCheck.status === 'APPROVED') {
+       // Notify DFA PPOC for final issuance SLA
+       setImmediate(() => notifyDFA_PPOC(db, {
+         request_id: result.updated.request_id,
+         reference_number: finalCheck.reference_number
+       }, 'Final Clearance Issuance Pending'));
+    }
+
     res.json({ message: 'Review updated', review: result.updated });
   } catch (err) { next(err); }
 });
