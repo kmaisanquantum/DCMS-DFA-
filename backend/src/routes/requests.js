@@ -159,10 +159,12 @@ router.get('/', async (req, res, next) => {
 router.get('/:id', param('id').isUUID(), validate, async (req, res, next) => {
   try {
     const { rows: [request] } = await db.query(
-      `SELECT r.*, c.display_name AS category_name, c.metadata_schema, m.mission_name, m.country_name
+      `SELECT r.*, c.display_name AS category_name, c.metadata_schema, m.mission_name, m.country_name,
+              cl.clearance_id, cl.clearance_number, cl.digital_hash, cl.qr_payload, cl.issued_at
        FROM requests r
        JOIN missions m ON r.mission_id = m.mission_id
        JOIN clearance_categories c ON r.category_id = c.category_id
+       LEFT JOIN clearance_log cl ON r.request_id = cl.request_id
        WHERE r.request_id = $1`, [req.params.id]
     );
     if (!request) return res.status(404).json({ error: 'Request not found' });
@@ -177,7 +179,15 @@ router.get('/:id', param('id').isUUID(), validate, async (req, res, next) => {
       ORDER BY d.review_order
     `, [req.params.id]);
 
-    res.json({ ...request, reviews });
+    const clearance = request.clearance_id ? {
+      clearance_id: request.clearance_id,
+      clearance_number: request.clearance_number,
+      digital_hash: request.digital_hash,
+      qr_payload: request.qr_payload,
+      issued_at: request.issued_at
+    } : null;
+
+    res.json({ ...request, reviews, clearance });
   } catch (err) { next(err); }
 });
 

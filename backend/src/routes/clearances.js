@@ -45,7 +45,6 @@ router.post('/', [
       );
 
       // Add 'Emergency' tag to metadata if applicable
-      const meta = request.is_emergency ? { ...request.category_metadata, clearance_priority: 'EMERGENCY' } : request.category_metadata;
 
       const { rows: [clearance] } = await client.query(`
         INSERT INTO clearance_log
