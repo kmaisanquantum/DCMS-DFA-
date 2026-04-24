@@ -17,12 +17,12 @@ async function notifyDepartments(pool, reviews, request) {
       await transporter.sendMail({
         from: `"DCMS Notifications" <noreply@dfa.gov.pg>`,
         to: review.contact_email,
-        subject: `[ACTION REQUIRED] Diplomatic Clearance Review — ${request.reference_number}`,
+        subject: `${request.escalation ? '🚨 [URGENT HOD ESCALATION] ' : '[ACTION REQUIRED] '}Diplomatic Clearance Review — ${request.reference_number}`,
         html: `
           <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto">
-            <div style="background:#1a3a6b;color:#fff;padding:20px;border-radius:8px 8px 0 0">
+            <div style="background:${request.escalation ? '#c00' : '#1a3a6b'};color:#fff;padding:20px;border-radius:8px 8px 0 0">
               <h2 style="margin:0">🇵🇬 DCMS — Papua New Guinea DFA</h2>
-              <p style="margin:4px 0 0;opacity:.8">Diplomatic Clearance Review Required</p>
+              <p style="margin:4px 0 0;opacity:.8">${request.escalation ? '⚠️ EMERGENCY REVIEW REQUIRED (24H)' : 'Diplomatic Clearance Review Required'}</p>
             </div>
             <div style="border:1px solid #ddd;border-top:none;padding:24px;border-radius:0 0 8px 8px">
               <p>Dear <strong>${review.dept_name}</strong>,</p>
@@ -32,8 +32,8 @@ async function notifyDepartments(pool, reviews, request) {
                 <tr><td style="padding:8px;border:1px solid #ddd;font-weight:bold">Mission</td><td style="padding:8px;border:1px solid #ddd">${request.mission_name} (${request.country_name})</td></tr>
                 <tr style="background:#f5f5f5"><td style="padding:8px;border:1px solid #ddd;font-weight:bold">Vessel</td><td style="padding:8px;border:1px solid #ddd">${request.vessel_name}</td></tr>
                 <tr><td style="padding:8px;border:1px solid #ddd;font-weight:bold">Entry Date</td><td style="padding:8px;border:1px solid #ddd">${request.proposed_entry_date}</td></tr>
-                <tr style="background:#f5f5f5"><td style="padding:8px;border:1px solid #ddd;font-weight:bold">Type</td><td style="padding:8px;border:1px solid #ddd">${request.clearance_type === 'EMERGENCY' ? '⚡ EMERGENCY (24h)' : 'Standard (10 working days)'}</td></tr>
-                <tr><td style="padding:8px;border:1px solid #ddd;font-weight:bold">Review Deadline</td><td style="padding:8px;border:1px solid #ddd;color:${request.clearance_type === 'EMERGENCY' ? '#c00' : '#333'}">${new Date(request.review_deadline).toLocaleString()}</td></tr>
+                <tr style="background:#f5f5f5"><td style="padding:8px;border:1px solid #ddd;font-weight:bold">Type</td><td style="padding:8px;border:1px solid #ddd">${(request.is_emergency || request.clearance_type === 'EMERGENCY') ? '⚡ EMERGENCY (24h)' : 'Standard (10 working days)'}</td></tr>
+                <tr><td style="padding:8px;border:1px solid #ddd;font-weight:bold">Review Deadline</td><td style="padding:8px;border:1px solid #ddd;color:${(request.is_emergency || request.clearance_type === 'EMERGENCY') ? '#c00' : '#333'}">${new Date(request.review_deadline).toLocaleString()}</td></tr>
               </table>
               <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/review/${review.review_id}"
                  style="display:inline-block;background:#1a3a6b;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:bold">
@@ -107,4 +107,38 @@ async function notifyDFA_PPOC(pool, request, categoryName) {
   }
 }
 
-module.exports = { notifyDepartments, notifyDFA_PPOC };
+async function sendAgencyReminder(pool, review, request) {
+  try {
+    await transporter.sendMail({
+      from: `"DCMS Notifications" <noreply@dfa.gov.pg>`,
+      to: review.contact_email,
+      subject: `⚠️ [SLA REMINDER] Clearance Review Pending — ${request.reference_number}`,
+      html: `
+        <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto">
+          <div style="background:#eab308;color:#000;padding:20px;border-radius:8px 8px 0 0">
+            <h2 style="margin:0">🇵🇬 DCMS — SLA Reminder</h2>
+            <p style="margin:4px 0 0;opacity:.8">Action required within 48 hours</p>
+          </div>
+          <div style="border:1px solid #ddd;border-top:none;padding:24px;border-radius:0 0 8px 8px">
+            <p>Dear <strong>${review.dept_name}</strong>,</p>
+            <p>This is a reminder that the diplomatic clearance application <strong>${request.reference_number}</strong> is still pending your review.</p>
+            <p>According to the SOP, a decision is required within 5 working days. The deadline is approaching.</p>
+
+            <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/review/${review.review_id}"
+               style="display:inline-block;background:#1a3a6b;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:bold;margin-top:16px">
+              Review Now →
+            </a>
+          </div>
+        </div>`,
+    });
+    await pool.query(
+      'UPDATE workflow_steps SET reminder_sent_at = NOW() WHERE review_id = $1',
+      [review.review_id]
+    );
+    logger.info(`Reminder sent to ${review.dept_code} for request ${request.reference_number}`);
+  } catch (err) {
+    logger.error(`Failed to send reminder to ${review.dept_code}: ${err.message}`);
+  }
+}
+
+module.exports = { notifyDepartments, notifyDFA_PPOC, sendAgencyReminder };

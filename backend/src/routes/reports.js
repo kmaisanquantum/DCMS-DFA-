@@ -43,4 +43,24 @@ router.get('/stats', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// GET /api/reports/internal-audit — identifying bottlenecks and SLA breaches
+router.get('/internal-audit', async (req, res, next) => {
+  try {
+    const { rows } = await db.query(`
+      SELECT
+        d.dept_name,
+        d.dept_code,
+        COUNT(ws.review_id) as total_reviews,
+        AVG(EXTRACT(EPOCH FROM (ws.reviewed_at - ws.created_at))) / 86400 as avg_response_days,
+        COUNT(ws.review_id) FILTER (WHERE EXTRACT(EPOCH FROM (ws.reviewed_at - ws.created_at)) / 86400 > 5) as sla_breaches
+      FROM workflow_steps ws
+      JOIN departments d ON ws.dept_id = d.dept_id
+      WHERE ws.status IN ('APPROVED', 'REJECTED')
+      GROUP BY d.dept_id, d.dept_name, d.dept_code
+      ORDER BY avg_response_days DESC
+    `);
+    res.json({ metrics: rows });
+  } catch (err) { next(err); }
+});
+
 module.exports = router;

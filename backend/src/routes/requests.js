@@ -24,7 +24,7 @@ router.post('/', [
 ], validate, async (req, res, next) => {
   try {
     const {
-      mission_id, category_id, category_metadata,
+      mission_id, category_id, category_metadata, is_emergency,
       port_of_entry, port_of_exit,
       route_waypoints, intended_activities, proposed_entry_date, proposed_exit_date,
       total_crew, total_passengers, personnel_manifest, clearance_type, emergency_reason,
@@ -61,16 +61,16 @@ router.post('/', [
       const { rows: [newRequest] } = await client.query(`
         INSERT INTO requests (
           reference_number, mission_id, category_id, category_metadata,
-          vessel_name, security_coordination_required,
+          vessel_name, security_coordination_required, is_emergency,
           port_of_entry, port_of_exit,
           route_waypoints, intended_activities, proposed_entry_date, proposed_exit_date,
           total_crew, total_passengers, personnel_manifest, clearance_type, emergency_reason, status
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'SUBMITTED')
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,'SUBMITTED')
         RETURNING *
       `, [
         referenceNumber, mission_id, category_id, JSON.stringify(category_metadata || {}),
         category_metadata?.vessel_name || category_metadata?.aircraft_type || category_metadata?.equipment_type || 'Diplomatic Request',
-        securityCoordRequired,
+        securityCoordRequired, !!is_emergency,
         port_of_entry, port_of_exit||null,
         JSON.stringify(route_waypoints||[]), intended_activities||null,
         proposed_entry_date, proposed_exit_date,
@@ -111,13 +111,14 @@ router.post('/', [
       }, result.category.display_name);
 
       // Emergency logic: Notify ALL agencies immediately and move to UNDER_REVIEW
-      if (clearance_type === 'EMERGENCY') {
+      if (result.newRequest.is_emergency || clearance_type === 'EMERGENCY') {
         await db.query(
           "UPDATE requests SET status = 'UNDER_REVIEW' WHERE request_id = $1",
           [result.newRequest.request_id]
         );
+        // Add "HOD Escalation" tag to notifications if needed
         await notifyDepartments(db, result.reviewRows, {
-          ...result.newRequest, ...result.mission
+          ...result.newRequest, ...result.mission, escalation: true
         });
       }
     });
@@ -184,7 +185,7 @@ router.get('/:id', param('id').isUUID(), validate, async (req, res, next) => {
 router.get('/:id/audit', param('id').isUUID(), validate, async (req, res, next) => {
   try {
     const { rows } = await db.query(
-      `SELECT * FROM audit_log WHERE entity_id = $1 ORDER BY created_at DESC`,
+      `SELECT * FROM system_logs WHERE entity_id = $1 ORDER BY created_at DESC`,
       [req.params.id]
     );
     res.json({ audit_trail: rows });
