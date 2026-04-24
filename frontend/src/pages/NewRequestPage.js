@@ -2,19 +2,14 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { submitRequest, fetchMissions } from '../utils/api';
+import { submitRequest, fetchMissions, fetchCategories } from '../utils/api';
 import { Button, Input, Select, PageHeader, Card } from '../components/UI';
-
-const VESSEL_TYPES = [
-  'NAVAL_VESSEL','COAST_GUARD','RESEARCH_VESSEL',
-  'DIPLOMATIC_AIRCRAFT','MILITARY_AIRCRAFT','COMMERCIAL_CHARTER',
-];
 
 export default function NewRequestPage() {
   const navigate = useNavigate();
   const [form, setForm] = useState({
-    mission_id:'', vessel_type:'NAVAL_VESSEL', vessel_name:'', vessel_flag:'',
-    vessel_registration:'', port_of_entry:'', port_of_exit:'',
+    mission_id:'', category_id:'', category_metadata:{},
+    port_of_entry:'', port_of_exit:'',
     proposed_entry_date:'', proposed_exit_date:'',
     total_crew:'0', total_passengers:'0', intended_activities:'',
     clearance_type:'STANDARD', emergency_reason:'',
@@ -24,6 +19,13 @@ export default function NewRequestPage() {
     queryKey: ['missions'],
     queryFn: fetchMissions,
   });
+
+  const { data: categoriesData } = useQuery({
+    queryKey: ['categories'],
+    queryFn: fetchCategories,
+  });
+
+  const selectedCategory = categoriesData?.categories?.find(c => c.category_id === form.category_id);
 
   const mutation = useMutation({
     mutationFn: submitRequest,
@@ -35,6 +37,10 @@ export default function NewRequestPage() {
   });
 
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
+  const setMeta = (k) => (e) => setForm(f => ({
+    ...f,
+    category_metadata: { ...f.category_metadata, [k]: e.target.value }
+  }));
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -77,22 +83,36 @@ export default function NewRequestPage() {
             </Select>
           </Card>
 
-          {/* Vessel info */}
+          {/* Category & Dynamic Metadata */}
           <Card style={{ marginBottom:20 }}>
             <div style={{ fontSize:11, color:'var(--text-muted)', fontWeight:700,
               textTransform:'uppercase', letterSpacing:'0.12em', marginBottom:14 }}>
-              Vessel / Craft Information
+              Clearance Category & Details
             </div>
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(240px, 1fr))', gap:14 }}>
-              <Select label="Vessel Type *" value={form.vessel_type} onChange={set('vessel_type')} required>
-                {VESSEL_TYPES.map(t => (
-                  <option key={t} value={t}>{t.replace(/_/g,' ')}</option>
+            <div style={{ marginBottom: 14 }}>
+              <Select label="Clearance Category *" value={form.category_id} onChange={set('category_id')} required>
+                <option value="">— Select Category —</option>
+                {categoriesData?.categories?.map(c => (
+                  <option key={c.category_id} value={c.category_id}>{c.display_name}</option>
                 ))}
               </Select>
-              <Input label="Vessel Name *" value={form.vessel_name} onChange={set('vessel_name')} required placeholder="e.g. HMAS Brisbane" />
-              <Input label="Flag (ISO 3-letter) *" value={form.vessel_flag} onChange={set('vessel_flag')} required placeholder="e.g. AUS" maxLength={3} />
-              <Input label="Registration Number" value={form.vessel_registration} onChange={set('vessel_registration')} placeholder="Optional" />
             </div>
+
+            {selectedCategory?.metadata_schema?.fields?.length > 0 && (
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(240px, 1fr))', gap:14, padding: '14px', background: 'var(--bg-base)', borderRadius: 'var(--radius-md)' }}>
+                {selectedCategory.metadata_schema.fields.map(field => (
+                  <Input
+                    key={field.name}
+                    label={field.label + (field.required ? ' *' : '')}
+                    type={field.type === 'number' ? 'number' : 'text'}
+                    value={form.category_metadata[field.name] || ''}
+                    onChange={setMeta(field.name)}
+                    required={field.required}
+                    placeholder={`Enter ${field.label.toLowerCase()}...`}
+                  />
+                ))}
+              </div>
+            )}
           </Card>
 
           {/* Route */}

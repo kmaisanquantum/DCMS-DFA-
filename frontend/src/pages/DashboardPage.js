@@ -129,7 +129,7 @@ export default function DashboardPage() {
           }}>
             <span>Reference</span>
             <span>Mission</span>
-            <span>Vessel</span>
+            <span>Category</span>
             <span>Entry</span>
             <span>Progress</span>
             <span>Status</span>
@@ -164,8 +164,8 @@ export default function DashboardPage() {
                   </div>
 
                   <div className="vessel-info">
-                    <div style={{ fontWeight:600, color:'var(--text-secondary)', fontSize:13 }}>{r.vessel_name}</div>
-                    <div style={{ fontSize:11, color:'var(--text-muted)' }}>{r.vessel_type?.replace(/_/g,' ')}</div>
+                    <div style={{ fontWeight:600, color:'var(--text-secondary)', fontSize:13 }}>{r.category_name}</div>
+                    <div style={{ fontSize:11, color:'var(--text-muted)' }}>{r.reference_number}</div>
                   </div>
 
                   <span className="entry-date" style={{ fontSize:12, color:'var(--text-secondary)' }}>{fmt(r.proposed_entry_date)}</span>
