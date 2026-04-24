@@ -153,6 +153,7 @@ CREATE TABLE workflow_steps (
   status           review_status NOT NULL DEFAULT 'PENDING',
   comments         TEXT,
   conditions       TEXT,
+  assessment_data  JSONB NOT NULL DEFAULT '{}',
   reviewed_at      TIMESTAMPTZ,
   notified_at      TIMESTAMPTZ,
   reminder_sent_at TIMESTAMPTZ,

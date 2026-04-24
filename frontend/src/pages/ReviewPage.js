@@ -15,6 +15,7 @@ export default function ReviewPage() {
   const [comments, setComments] = useState('');
   const [conditions, setConditions] = useState('');
   const [officer, setOfficer] = useState('');
+  const [assessment, setAssessment] = useState({});
 
   const { data: review, isLoading } = useQuery({
     queryKey: ['review', id],
@@ -26,6 +27,7 @@ export default function ReviewPage() {
       status: decision,
       comments,
       conditions,
+      assessment_data: assessment,
       assigned_to: officer
     }),
     onSuccess: () => {
@@ -87,6 +89,55 @@ export default function ReviewPage() {
                     </Button>
                   ))}
                 </div>
+              </div>
+
+              {/* Agency Specific Assessment Modules */}
+              <div style={{ padding: '16px', background: 'var(--bg-base)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-light)' }}>
+                <div style={{ fontSize:11, color:'var(--blue-text)', fontWeight:700, textTransform:'uppercase', marginBottom:12 }}>Agency Specific Assessment</div>
+
+                {review.dept_code === 'DOT' && (
+                  <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                    <label style={{ display:'flex', alignItems:'center', gap:8, fontSize:13 }}>
+                      <input type="checkbox" checked={!!assessment.route_validated} onChange={e => setAssessment({...assessment, route_validated: e.target.checked})} />
+                      Proposed Route Validated (PNG Airspace/Waters)
+                    </label>
+                    <Input label="Navigation Chart Reference" value={assessment.chart_ref || ''} onChange={e => setAssessment({...assessment, chart_ref: e.target.value})} placeholder="e.g. PNG-104-B" />
+                  </div>
+                )}
+
+                {review.dept_code === 'RPNGC' && (
+                  <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                    <label style={{ display:'flex', alignItems:'center', gap:8, fontSize:13 }}>
+                      <input type="checkbox" checked={!!assessment.firearms_checked} onChange={e => setAssessment({...assessment, firearms_checked: e.target.checked})} />
+                      Firearms & Security Personnel Vetted
+                    </label>
+                    <Input label="Armoury Permit ID" value={assessment.permit_id || ''} onChange={e => setAssessment({...assessment, permit_id: e.target.value})} />
+                  </div>
+                )}
+
+                {review.dept_code === 'PNGDF' && (
+                  <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                    <label style={{ display:'flex', alignItems:'center', gap:8, fontSize:13 }}>
+                      <input type="checkbox" checked={!!assessment.military_coordination} onChange={e => setAssessment({...assessment, military_coordination: e.target.checked})} />
+                      Joint Military Coordination Confirmed
+                    </label>
+                    <Input label="Liaison Officer Code" value={assessment.liaison_code || ''} onChange={e => setAssessment({...assessment, liaison_code: e.target.value})} />
+                  </div>
+                )}
+
+                {(review.dept_code === 'NICTA' || review.dept_code === 'DICT') && (
+                  <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                    <label style={{ display:'flex', alignItems:'center', gap:8, fontSize:13 }}>
+                      <input type="checkbox" checked={!!assessment.tech_compliant} onChange={e => setAssessment({...assessment, tech_compliant: e.target.checked})} />
+                      Technical Compliance & Frequency Check Complete
+                    </label>
+                    <Input label="Spectrum Allocation Ref" value={assessment.spectrum_ref || ''} onChange={e => setAssessment({...assessment, spectrum_ref: e.target.value})} />
+                  </div>
+                )}
+
+                {!['DOT','RPNGC','PNGDF','NICTA','DICT'].includes(review.dept_code) && (
+                   <div style={{ fontSize:12, color:'var(--text-muted)' }}>Standard review module active for {review.dept_code}.</div>
+                )}
               </div>
 
               <label style={{ display:'flex', flexDirection:'column', gap:4 }}>

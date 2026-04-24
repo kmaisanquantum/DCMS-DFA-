@@ -15,10 +15,11 @@ router.put('/:id', [
   body('status').isIn(['APPROVED','REJECTED','INFORMATION_REQUESTED']),
   body('comments').optional().trim(),
   body('conditions').optional().trim(),
+  body('assessment_data').optional().isObject(),
   body('assigned_to').optional().trim(),
 ], validate, async (req, res, next) => {
   try {
-    const { status, comments, conditions, assigned_to } = req.body;
+    const { status, comments, conditions, assessment_data, assigned_to } = req.body;
 
     const result = await db.transaction(async (client) => {
       // 1. Fetch current review details including dept and request info
@@ -37,10 +38,10 @@ router.put('/:id', [
       // 2. Perform the update
       const { rows: [updated] } = await client.query(`
         UPDATE workflow_steps
-        SET status=$1, comments=$2, conditions=$3, assigned_to=$4
-        WHERE review_id=$5
+        SET status=$1, comments=$2, conditions=$3, assessment_data=$4, assigned_to=$5
+        WHERE review_id=$6
         RETURNING *
-      `, [status, comments||null, conditions||null, assigned_to||null, req.params.id]);
+      `, [status, comments||null, conditions||null, JSON.stringify(assessment_data||{}), assigned_to||null, req.params.id]);
 
       // 3. If DFA Approves Initial Review, move to UNDER_REVIEW and notify other agencies
       if (review.dept_code === 'DFA' && status === 'APPROVED' && review.request_status === 'SUBMITTED') {
