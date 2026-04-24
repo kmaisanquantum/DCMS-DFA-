@@ -2,7 +2,7 @@ const router = require('express').Router();
 const { body, query: qv, param, validationResult } = require('express-validator');
 const db = require('../db/pool');
 const { generateReferenceNumber } = require('../utils/crypto');
-const { notifyDepartments } = require('../utils/mailer');
+const { notifyDepartments, notifyDFA_PPOC } = require('../utils/mailer');
 const logger = require('../utils/logger');
 
 const validate = (req, res, next) => {
@@ -33,23 +33,28 @@ router.post('/', [
     const result = await db.transaction(async (client) => {
       const referenceNumber = await generateReferenceNumber(client);
 
-      // Fetch category to get primary department
+      // Fetch category to get primary department and check security flags
       const { rows: [category] } = await client.query(
-        `SELECT primary_dept_id FROM clearance_categories WHERE category_id = $1`,
+        `SELECT category_code, display_name, primary_dept_id FROM clearance_categories WHERE category_id = $1`,
         [category_id]
       );
       if (!category) throw new Error('Invalid category_id');
 
+      const securityCoordRequired = ['HIGH_RISK_CARGO', 'FIREARMS'].includes(category.category_code);
+
       const { rows: [newRequest] } = await client.query(`
         INSERT INTO requests (
           reference_number, mission_id, category_id, category_metadata,
+          vessel_name, security_coordination_required,
           port_of_entry, port_of_exit,
           route_waypoints, intended_activities, proposed_entry_date, proposed_exit_date,
           total_crew, total_passengers, personnel_manifest, clearance_type, emergency_reason, status
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'SUBMITTED')
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'SUBMITTED')
         RETURNING *
       `, [
         referenceNumber, mission_id, category_id, JSON.stringify(category_metadata || {}),
+        category_metadata?.vessel_name || category_metadata?.aircraft_type || category_metadata?.equipment_type || 'Diplomatic Request',
+        securityCoordRequired,
         port_of_entry, port_of_exit||null,
         JSON.stringify(route_waypoints||[]), intended_activities||null,
         proposed_entry_date, proposed_exit_date,
@@ -60,13 +65,15 @@ router.post('/', [
 
       const { rows: departments } = await client.query(
         `SELECT dept_id, dept_code, dept_name, contact_email FROM departments
-         WHERE is_mandatory = TRUE OR dept_id = $1
+         WHERE is_mandatory = TRUE OR dept_id = $1 OR dept_code = 'DFA'
          ORDER BY review_order`,
         [category.primary_dept_id]
       );
 
       const reviewRows = [];
       for (const dept of departments) {
+        // Initial status is PENDING for all.
+        // DFA will be the 'Initial Reviewer'
         const { rows: [review] } = await client.query(
         `INSERT INTO workflow_steps (request_id, dept_id) VALUES ($1,$2) RETURNING review_id`,
           [newRequest.request_id, dept.dept_id]
@@ -78,18 +85,25 @@ router.post('/', [
         `SELECT mission_name, country_name FROM missions WHERE mission_id = $1`, [mission_id]
       );
 
-      return { newRequest, reviewRows, departments, mission };
+      return { newRequest, reviewRows, departments, mission, category };
     });
 
     setImmediate(async () => {
-      await notifyDepartments(db, result.reviewRows, {
+      // Notify DFA PPOC immediately to begin 'Initial Review'
+      await notifyDFA_PPOC(db, {
         ...result.newRequest, ...result.mission
-      });
-      // Once departments are notified, the request is officially 'UNDER_REVIEW'
-      await db.query(
-        "UPDATE requests SET status = 'UNDER_REVIEW' WHERE request_id = $1",
-        [result.newRequest.request_id]
-      );
+      }, result.category.display_name);
+
+      // Emergency logic: Notify ALL agencies immediately and move to UNDER_REVIEW
+      if (clearance_type === 'EMERGENCY') {
+        await db.query(
+          "UPDATE requests SET status = 'UNDER_REVIEW' WHERE request_id = $1",
+          [result.newRequest.request_id]
+        );
+        await notifyDepartments(db, result.reviewRows, {
+          ...result.newRequest, ...result.mission
+        });
+      }
     });
 
     logger.info(`New request submitted: ${result.newRequest.reference_number}`);
