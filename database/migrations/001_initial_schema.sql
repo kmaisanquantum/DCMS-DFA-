@@ -75,6 +75,7 @@ CREATE TABLE requests (
   personnel_manifest      JSONB DEFAULT '[]',
   category_metadata       JSONB NOT NULL DEFAULT '{}',
   security_coordination_required BOOLEAN NOT NULL DEFAULT FALSE,
+  is_emergency            BOOLEAN NOT NULL DEFAULT FALSE,
   clearance_type          clearance_type NOT NULL DEFAULT 'STANDARD',
   emergency_reason        TEXT,
   status                  request_status NOT NULL DEFAULT 'DRAFT',
@@ -124,7 +125,7 @@ RETURNS TRIGGER LANGUAGE plpgsql AS $$
 BEGIN
   IF NEW.status = 'SUBMITTED' AND (OLD.status IS NULL OR OLD.status = 'DRAFT') THEN
     NEW.submitted_at := NOW();
-    IF NEW.clearance_type = 'EMERGENCY' THEN
+    IF NEW.is_emergency = TRUE OR NEW.clearance_type = 'EMERGENCY' THEN
       NEW.initial_review_deadline := NOW() + INTERVAL '4 hours';
       NEW.agency_review_deadline  := NOW() + INTERVAL '12 hours';
       NEW.issuance_deadline       := NOW() + INTERVAL '24 hours';
@@ -250,7 +251,7 @@ CREATE TRIGGER trg_guard_clearance
 ALTER TABLE requests ADD CONSTRAINT fk_final_clearance
   FOREIGN KEY (final_clearance_id) REFERENCES clearance_log(clearance_id) DEFERRABLE INITIALLY DEFERRED;
 
-CREATE TABLE audit_log (
+CREATE TABLE system_logs (
   log_id      UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   entity_type VARCHAR(50) NOT NULL,
   entity_id   UUID NOT NULL,
@@ -261,14 +262,25 @@ CREATE TABLE audit_log (
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE OR REPLACE FUNCTION protect_immutable_logs()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+  RAISE EXCEPTION 'Audit logs are immutable and cannot be updated or deleted. (SOP Section 6)';
+END;
+$$;
+
+CREATE TRIGGER trg_protect_system_logs
+  BEFORE UPDATE OR DELETE ON system_logs
+  FOR EACH ROW EXECUTE FUNCTION protect_immutable_logs();
+
 CREATE OR REPLACE FUNCTION log_status_change()
 RETURNS TRIGGER LANGUAGE plpgsql AS $$
 BEGIN
   IF TG_TABLE_NAME = 'requests' AND OLD.status IS DISTINCT FROM NEW.status THEN
-    INSERT INTO audit_log(entity_type,entity_id,old_status,new_status)
+    INSERT INTO system_logs(entity_type,entity_id,old_status,new_status)
     VALUES ('REQUEST',NEW.request_id,OLD.status::TEXT,NEW.status::TEXT);
   ELSIF TG_TABLE_NAME = 'workflow_steps' AND OLD.status IS DISTINCT FROM NEW.status THEN
-    INSERT INTO audit_log(entity_type,entity_id,old_status,new_status)
+    INSERT INTO system_logs(entity_type,entity_id,old_status,new_status)
     VALUES ('REVIEW',NEW.review_id,OLD.status::TEXT,NEW.status::TEXT);
   END IF;
   RETURN NEW;
@@ -322,4 +334,4 @@ CREATE INDEX idx_requests_deadline ON requests(review_deadline);
 CREATE INDEX idx_reviews_request   ON workflow_steps(request_id);
 CREATE INDEX idx_reviews_dept      ON workflow_steps(dept_id);
 CREATE INDEX idx_clearances_hash   ON clearance_log(digital_hash);
-CREATE INDEX idx_audit_entity      ON audit_log(entity_type, entity_id);
+CREATE INDEX idx_audit_entity      ON system_logs(entity_type, entity_id);

@@ -97,6 +97,7 @@ app.use(errorHandler);
 // ── Start & Migration ──────────────────────────
 const PORT = process.env.PORT || 3001;
 const migrate = require('./db/migrate-on-start');
+const { processSLAReminders } = require('./utils/reminderJob');
 
 const server = app.listen(PORT, () => {
   logger.info(`DCMS API running on port ${PORT} [${process.env.NODE_ENV || 'development'}]`);
@@ -104,7 +105,12 @@ const server = app.listen(PORT, () => {
 
   // Run migrations asynchronously after server starts
   migrate()
-    .then(() => logger.info('Database migrations completed successfully.'))
+    .then(() => {
+      logger.info('Database migrations completed successfully.');
+      // Start recurring SLA reminder job every 4 hours
+      setInterval(processSLAReminders, 4 * 60 * 60 * 1000);
+      processSLAReminders(); // Run once on start
+    })
     .catch(err => logger.error('Database migration failed (non-fatal for web server)', err));
 });
 
