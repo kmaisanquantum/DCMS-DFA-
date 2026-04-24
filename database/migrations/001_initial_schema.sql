@@ -1,16 +1,11 @@
 -- ============================================================
--- DCMS Migration 001: Initial Schema
+-- DCMS Migration 001: Initial Schema (Refactored for Categories)
 -- Diplomatic Clearance Management System — Papua New Guinea
 -- ============================================================
 
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
-CREATE TYPE vessel_type AS ENUM (
-  'NAVAL_VESSEL','COAST_GUARD','RESEARCH_VESSEL',
-  'DIPLOMATIC_AIRCRAFT','MILITARY_AIRCRAFT','COMMERCIAL_CHARTER',
-  'RADIO_FREQUENCY','DIPLOMATIC_POUCH'
-);
 CREATE TYPE request_status AS ENUM (
   'DRAFT','SUBMITTED','UNDER_REVIEW','APPROVED',
   'FINALIZED','REJECTED','WITHDRAWN','EXPIRED'
@@ -52,16 +47,23 @@ INSERT INTO departments (dept_code, dept_name, is_mandatory, review_order, conta
   ('DICT',  'Department of Information & Communications Technology',TRUE,  5, 'reviews@dict.gov.pg'),
   ('DFA',   'Department of Foreign Affairs',                        FALSE, 6, 'clearances@dfa.gov.pg');
 
+CREATE TABLE clearance_categories (
+  category_id     UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  category_code   VARCHAR(50) NOT NULL UNIQUE,
+  display_name    VARCHAR(255) NOT NULL,
+  metadata_schema JSONB NOT NULL DEFAULT '{}',
+  primary_dept_id UUID REFERENCES departments(dept_id),
+  is_active       BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE TABLE requests (
   request_id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   reference_number        VARCHAR(30) NOT NULL UNIQUE,
   mission_id              UUID NOT NULL REFERENCES missions(mission_id) ON DELETE RESTRICT,
-  vessel_type             vessel_type NOT NULL,
-  vessel_name             VARCHAR(255) NOT NULL,
-  vessel_flag             CHAR(3) NOT NULL,
-  vessel_registration     VARCHAR(100),
-  vessel_tonnage          NUMERIC(10,2),
-  vessel_length_m         NUMERIC(8,2),
+  category_id             UUID NOT NULL REFERENCES clearance_categories(category_id),
+  vessel_name             VARCHAR(255), -- Keep for legacy/compatibility if needed, but move to metadata
   port_of_entry           VARCHAR(255) NOT NULL,
   port_of_exit            VARCHAR(255),
   route_waypoints         JSONB DEFAULT '[]',
@@ -71,6 +73,7 @@ CREATE TABLE requests (
   total_crew              SMALLINT NOT NULL DEFAULT 0,
   total_passengers        SMALLINT NOT NULL DEFAULT 0,
   personnel_manifest      JSONB DEFAULT '[]',
+  category_metadata       JSONB NOT NULL DEFAULT '{}',
   clearance_type          clearance_type NOT NULL DEFAULT 'STANDARD',
   emergency_reason        TEXT,
   status                  request_status NOT NULL DEFAULT 'DRAFT',
@@ -78,7 +81,7 @@ CREATE TABLE requests (
   initial_review_deadline TIMESTAMPTZ,
   agency_review_deadline  TIMESTAMPTZ,
   issuance_deadline       TIMESTAMPTZ,
-  review_deadline         TIMESTAMPTZ, -- Deprecated, kept for compatibility if needed
+  review_deadline         TIMESTAMPTZ,
   overdue_at              TIMESTAMPTZ,
   rejected_reason         TEXT,
   final_clearance_id      UUID,
@@ -113,6 +116,7 @@ $$;
 
 CREATE TRIGGER trg_missions_updated_at BEFORE UPDATE ON missions FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
 CREATE TRIGGER trg_requests_updated_at BEFORE INSERT OR UPDATE ON requests FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
+CREATE TRIGGER trg_categories_updated_at BEFORE UPDATE ON clearance_categories FOR EACH ROW EXECUTE FUNCTION touch_updated_at();
 
 CREATE OR REPLACE FUNCTION set_submission_deadlines()
 RETURNS TRIGGER LANGUAGE plpgsql AS $$
@@ -126,8 +130,8 @@ BEGIN
       NEW.review_deadline         := NEW.issuance_deadline;
     ELSE
       NEW.initial_review_deadline := add_working_days(NOW(), 2);
-      NEW.agency_review_deadline  := add_working_days(NOW(), 7); -- 2 (initial) + 5 (agency)
-      NEW.issuance_deadline       := add_working_days(NOW(), 10); -- 2 + 5 + 3
+      NEW.agency_review_deadline  := add_working_days(NOW(), 7);
+      NEW.issuance_deadline       := add_working_days(NOW(), 10);
       NEW.review_deadline         := NEW.issuance_deadline;
     END IF;
     NEW.overdue_at := NEW.review_deadline;
@@ -165,7 +169,6 @@ RETURNS TRIGGER LANGUAGE plpgsql AS $$
 BEGIN
   IF NEW.status IN ('APPROVED','REJECTED','INFORMATION_REQUESTED') AND OLD.status = 'PENDING' THEN
     NEW.reviewed_at := NOW();
-    -- Automatically advance request to UNDER_REVIEW when first agency starts
     UPDATE requests SET status = 'UNDER_REVIEW'
     WHERE request_id = NEW.request_id AND status = 'SUBMITTED';
   END IF;
@@ -275,7 +278,7 @@ CREATE TRIGGER trg_audit_reviews  AFTER UPDATE ON workflow_steps FOR EACH ROW EX
 
 CREATE OR REPLACE VIEW v_request_dashboard AS
 SELECT r.request_id, r.reference_number, m.mission_name, m.country_name,
-  r.vessel_name, r.vessel_type, r.clearance_type, r.status,
+  c.display_name AS category_name, r.vessel_name, r.status,
   r.proposed_entry_date, r.proposed_exit_date, r.submitted_at,
   r.initial_review_deadline, r.agency_review_deadline, r.issuance_deadline, r.review_deadline,
   CASE
@@ -293,22 +296,25 @@ SELECT r.request_id, r.reference_number, m.mission_name, m.country_name,
   (SELECT COUNT(*) FROM departments WHERE is_mandatory=TRUE) AS total_mandatory
 FROM requests r
 JOIN missions m ON r.mission_id = m.mission_id
+JOIN clearance_categories c ON r.category_id = c.category_id
 LEFT JOIN workflow_steps dr ON r.request_id = dr.request_id
-GROUP BY r.request_id, m.mission_name, m.country_name;
+GROUP BY r.request_id, m.mission_name, m.country_name, c.display_name;
 
 CREATE OR REPLACE VIEW v_clearance_verify AS
 SELECT fc.clearance_id, fc.clearance_number, fc.digital_hash, fc.letter_hash,
   fc.valid_from, fc.valid_until, fc.is_revoked, fc.issued_at,
   fc.issued_by_officer, fc.conditions,
-  r.reference_number, r.vessel_name, r.vessel_type, r.vessel_flag,
-  r.vessel_registration, r.port_of_entry, r.port_of_exit,
+  r.reference_number, r.vessel_name, r.port_of_entry, r.port_of_exit,
   r.route_waypoints, r.total_crew, r.total_passengers, r.personnel_manifest,
+  r.category_metadata, c.display_name AS category_name,
   m.mission_name, m.country_name
 FROM clearance_log fc
 JOIN requests r ON fc.request_id = r.request_id
+JOIN clearance_categories c ON r.category_id = c.category_id
 JOIN missions m ON r.mission_id = m.mission_id;
 
 CREATE INDEX idx_requests_mission  ON requests(mission_id);
+CREATE INDEX idx_requests_category ON requests(category_id);
 CREATE INDEX idx_requests_status   ON requests(status);
 CREATE INDEX idx_requests_deadline ON requests(review_deadline);
 CREATE INDEX idx_reviews_request   ON workflow_steps(request_id);

@@ -58,7 +58,7 @@ export default function RequestDetailPage() {
         {/* Title row */}
         <div style={{ marginBottom:24 }}>
           <h1 style={{ fontFamily:'var(--font-serif)', fontSize:26, color:'var(--text-primary)',
-            fontWeight:700, marginBottom:4 }}>{request.vessel_name}</h1>
+            fontWeight:700, marginBottom:4 }}>{request.category_name}</h1>
           <div style={{ fontFamily:'var(--font-mono)', fontSize:12, color:'var(--blue-text)',
             marginBottom:8 }}>{request.reference_number}</div>
           <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
@@ -82,8 +82,7 @@ export default function RequestDetailPage() {
                 {[
                   ['Mission',       request.mission_name],
                   ['Country',       request.country_name],
-                  ['Vessel Type',   request.vessel_type?.replace(/_/g,' ')],
-                  ['Flag',          request.vessel_flag],
+                  ['Category',      request.category_name],
                   ['Port of Entry', request.port_of_entry],
                   ['Port of Exit',  request.port_of_exit || '—'],
                   ['Entry Date',    fmt(request.proposed_entry_date)],
@@ -101,6 +100,27 @@ export default function RequestDetailPage() {
                 ))}
               </div>
             </Card>
+
+            {request.category_metadata && Object.keys(request.category_metadata).length > 0 && (
+              <Card>
+                <div style={{ fontSize:11, color:'var(--text-muted)', fontWeight:700,
+                  textTransform:'uppercase', letterSpacing:'0.12em', marginBottom:14 }}>
+                  Category Specific Information
+                </div>
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(140px, 1fr))', gap:16 }}>
+                  {Object.entries(request.category_metadata).map(([k, v]) => {
+                    const field = request.metadata_schema?.fields?.find(f => f.name === k);
+                    return (
+                      <div key={k}>
+                        <div style={{ fontSize:10, color:'var(--text-muted)', textTransform:'uppercase',
+                          letterSpacing:'0.1em', marginBottom:2 }}>{field?.label || k}</div>
+                        <div style={{ fontSize:13, fontWeight:600, color:'var(--text-primary)' }}>{v}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </Card>
+            )}
 
             <Card>
               <div style={{ fontSize:11, color:'var(--text-muted)', fontWeight:700,

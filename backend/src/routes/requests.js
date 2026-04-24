@@ -14,9 +14,8 @@ const validate = (req, res, next) => {
 // POST /api/requests — submit new clearance request
 router.post('/', [
   body('mission_id').isUUID(),
-  body('vessel_type').isIn(['NAVAL_VESSEL','COAST_GUARD','RESEARCH_VESSEL','DIPLOMATIC_AIRCRAFT','MILITARY_AIRCRAFT','COMMERCIAL_CHARTER','RADIO_FREQUENCY','DIPLOMATIC_POUCH']),
-  body('vessel_name').trim().notEmpty(),
-  body('vessel_flag').trim().isLength({ min:2, max:3 }),
+  body('category_id').isUUID(),
+  body('category_metadata').isObject(),
   body('port_of_entry').trim().notEmpty(),
   body('proposed_entry_date').isDate(),
   body('proposed_exit_date').isDate(),
@@ -25,8 +24,8 @@ router.post('/', [
 ], validate, async (req, res, next) => {
   try {
     const {
-      mission_id, vessel_type, vessel_name, vessel_flag, vessel_registration,
-      vessel_tonnage, vessel_length_m, port_of_entry, port_of_exit,
+      mission_id, category_id, category_metadata,
+      port_of_entry, port_of_exit,
       route_waypoints, intended_activities, proposed_entry_date, proposed_exit_date,
       total_crew, total_passengers, personnel_manifest, clearance_type, emergency_reason,
     } = req.body;
@@ -34,17 +33,23 @@ router.post('/', [
     const result = await db.transaction(async (client) => {
       const referenceNumber = await generateReferenceNumber(client);
 
+      // Fetch category to get primary department
+      const { rows: [category] } = await client.query(
+        `SELECT primary_dept_id FROM clearance_categories WHERE category_id = $1`,
+        [category_id]
+      );
+      if (!category) throw new Error('Invalid category_id');
+
       const { rows: [newRequest] } = await client.query(`
         INSERT INTO requests (
-          reference_number, mission_id, vessel_type, vessel_name, vessel_flag,
-          vessel_registration, vessel_tonnage, vessel_length_m, port_of_entry, port_of_exit,
+          reference_number, mission_id, category_id, category_metadata,
+          port_of_entry, port_of_exit,
           route_waypoints, intended_activities, proposed_entry_date, proposed_exit_date,
           total_crew, total_passengers, personnel_manifest, clearance_type, emergency_reason, status
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,'SUBMITTED')
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'SUBMITTED')
         RETURNING *
       `, [
-        referenceNumber, mission_id, vessel_type, vessel_name, vessel_flag,
-        vessel_registration||null, vessel_tonnage||null, vessel_length_m||null,
+        referenceNumber, mission_id, category_id, JSON.stringify(category_metadata || {}),
         port_of_entry, port_of_exit||null,
         JSON.stringify(route_waypoints||[]), intended_activities||null,
         proposed_entry_date, proposed_exit_date,
@@ -55,7 +60,9 @@ router.post('/', [
 
       const { rows: departments } = await client.query(
         `SELECT dept_id, dept_code, dept_name, contact_email FROM departments
-         WHERE is_mandatory = TRUE ORDER BY review_order`
+         WHERE is_mandatory = TRUE OR dept_id = $1
+         ORDER BY review_order`,
+        [category.primary_dept_id]
       );
 
       const reviewRows = [];
@@ -121,7 +128,11 @@ router.get('/', async (req, res, next) => {
 router.get('/:id', param('id').isUUID(), validate, async (req, res, next) => {
   try {
     const { rows: [request] } = await db.query(
-      `SELECT * FROM v_request_dashboard WHERE request_id = $1`, [req.params.id]
+      `SELECT r.*, c.display_name AS category_name, c.metadata_schema, m.mission_name, m.country_name
+       FROM requests r
+       JOIN missions m ON r.mission_id = m.mission_id
+       JOIN clearance_categories c ON r.category_id = c.category_id
+       WHERE r.request_id = $1`, [req.params.id]
     );
     if (!request) return res.status(404).json({ error: 'Request not found' });
 
