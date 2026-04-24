@@ -64,9 +64,15 @@ router.put('/:id', [
       return { updated, notify: false };
     });
 
-    // 4. Send Denial notice if rejected
+    // 4. Send Denial notice and log Non-Compliance if rejected
     if (result.updated.status === 'REJECTED') {
-      setImmediate(() => sendDenialNotice(db, result.request, result.updated));
+      setImmediate(async () => {
+        await sendDenialNotice(db, result.request, result.updated);
+        await db.query(`
+          INSERT INTO non_compliance_logs (request_id, violation_type, notice_text, repercussions)
+          VALUES ($1, 'AGENCY_REJECTION', $2, 'Formal record of diplomatic clearance rejection for national security/regulatory reasons.')
+        `, [result.updated.request_id, result.updated.comments || 'Rejection by stakeholder agency.']);
+      });
     }
 
     if (result.notify) {
