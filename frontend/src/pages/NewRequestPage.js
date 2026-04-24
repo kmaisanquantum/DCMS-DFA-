@@ -45,6 +45,25 @@ export default function NewRequestPage() {
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!form.mission_id) { toast.error('Please select a mission'); return; }
+
+    const entryDate = new Date(form.proposed_entry_date);
+    const today = new Date();
+    const diffDays = Math.ceil((entryDate - today) / (1000 * 60 * 60 * 24));
+
+    if (diffDays < 10 && form.clearance_type !== 'EMERGENCY') {
+      const confirmEmergency = window.confirm(
+        'The 10-Day Rule: This request is scheduled for less than 10 working days from today. ' +
+        'SOP requires this to be submitted as an "Emergency" (24-hour expedited process). ' +
+        'Would you like to flag this as an Emergency?'
+      );
+      if (confirmEmergency) {
+        setForm(f => ({ ...f, clearance_type: 'EMERGENCY' }));
+        return;
+      } else {
+        return;
+      }
+    }
+
     mutation.mutate({
       ...form,
       total_crew: parseInt(form.total_crew) || 0,

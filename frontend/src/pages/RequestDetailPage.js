@@ -42,8 +42,24 @@ export default function RequestDetailPage() {
   );
 
   const over = isOverdue(request);
-  const canIssue = request.status === 'ALL_APPROVED';
+  const canIssue = request.status === 'APPROVED';
   const reviews = request.reviews || [];
+
+  const dfaReview = reviews.find(r => r.dept_code === 'DFA' && r.status === 'PENDING');
+  const isSubmitted = request.status === 'SUBMITTED';
+
+  const forwardMutation = useMutation({
+    mutationFn: () => updateReview(dfaReview.review_id, {
+      status: 'APPROVED',
+      comments: 'Initial review complete. Forwarding to agencies.',
+      assigned_to: officer || 'DFA Officer'
+    }),
+    onSuccess: () => {
+      toast.success('Request forwarded to agencies!');
+      qc.invalidateQueries(['request', id]);
+    },
+    onError: (err) => toast.error(err.message),
+  });
 
   return (
     <div style={{ padding: '16px 0' }} className="container">
@@ -149,6 +165,36 @@ export default function RequestDetailPage() {
 
           {/* Action sidebar */}
           <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
+            {isSubmitted && dfaReview && (
+              <Card style={{ borderColor: 'var(--blue)', background: 'var(--blue-dim)' }}>
+                <div style={{ fontSize:11, color:'var(--blue-text)', fontWeight:700,
+                  textTransform:'uppercase', letterSpacing:'0.12em', marginBottom:14 }}>
+                  DFA Initial Review
+                </div>
+                <p style={{ fontSize: 12, marginBottom: 14 }}>Check for completeness and forward to all relevant departments.</p>
+                <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                  <input
+                    value={officer}
+                    onChange={e => setOfficer(e.target.value)}
+                    placeholder="Your Name"
+                    style={{
+                      background:'var(--bg-elevated)', border:'1px solid var(--border-light)',
+                      borderRadius:'var(--radius-sm)', padding:'9px 12px',
+                      color:'var(--text-primary)', fontSize:13, outline:'none', width: '100%'
+                    }}
+                  />
+                  <Button
+                    variant="primary"
+                    onClick={() => forwardMutation.mutate()}
+                    disabled={forwardMutation.isPending || !officer.trim()}
+                    style={{ width:'100%', justifyContent:'center' }}
+                  >
+                    {forwardMutation.isPending ? '⏳ Forwarding…' : '→ Forward to Agencies'}
+                  </Button>
+                </div>
+              </Card>
+            )}
+
             <Card>
               <div style={{ fontSize:11, color:'var(--text-muted)', fontWeight:700,
                 textTransform:'uppercase', letterSpacing:'0.12em', marginBottom:14 }}>

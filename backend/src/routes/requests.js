@@ -30,6 +30,22 @@ router.post('/', [
       total_crew, total_passengers, personnel_manifest, clearance_type, emergency_reason,
     } = req.body;
 
+    // 10-Day Rule Validation
+    const entryDate = new Date(proposed_entry_date);
+    const today = new Date();
+
+    // Simple 10 working days approximation (approx 14 calendar days)
+    // In a real system, we'd use a robust utility with holidays
+    const diffTime = entryDate - today;
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    if (diffDays < 10 && clearance_type !== 'EMERGENCY') {
+      return res.status(400).json({
+        error: 'The 10-Day Rule: Standard requests must be submitted at least 10 working days before the planned activity. Please flag as "Emergency" if justified.',
+        rule_violation: true
+      });
+    }
+
     const result = await db.transaction(async (client) => {
       const referenceNumber = await generateReferenceNumber(client);
 
