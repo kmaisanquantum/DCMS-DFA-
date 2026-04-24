@@ -74,6 +74,7 @@ CREATE TABLE requests (
   total_passengers        SMALLINT NOT NULL DEFAULT 0,
   personnel_manifest      JSONB DEFAULT '[]',
   category_metadata       JSONB NOT NULL DEFAULT '{}',
+  security_coordination_required BOOLEAN NOT NULL DEFAULT FALSE,
   clearance_type          clearance_type NOT NULL DEFAULT 'STANDARD',
   emergency_reason        TEXT,
   status                  request_status NOT NULL DEFAULT 'DRAFT',
@@ -278,7 +279,7 @@ CREATE TRIGGER trg_audit_reviews  AFTER UPDATE ON workflow_steps FOR EACH ROW EX
 
 CREATE OR REPLACE VIEW v_request_dashboard AS
 SELECT r.request_id, r.reference_number, m.mission_name, m.country_name,
-  c.display_name AS category_name, r.vessel_name, r.status,
+  c.display_name AS category_name, r.vessel_name, r.status, r.security_coordination_required,
   r.proposed_entry_date, r.proposed_exit_date, r.submitted_at,
   r.initial_review_deadline, r.agency_review_deadline, r.issuance_deadline, r.review_deadline,
   CASE
