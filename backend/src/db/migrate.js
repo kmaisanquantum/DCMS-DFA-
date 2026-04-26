@@ -1,7 +1,7 @@
-require('dotenv').config();
+const { pool } = require('./pool');
 const fs = require('fs');
 const path = require('path');
-const { pool } = require('./pool');
+const logger = require('../utils/logger');
 
 async function migrate() {
   const migrationsDir = path.join(__dirname, '../../../database/migrations');
@@ -22,23 +22,30 @@ async function migrate() {
         'SELECT id FROM _migrations WHERE filename = $1', [file]
       );
       if (rows.length > 0) {
-        console.log(`⏭  Skipping ${file} (already run)`);
         continue;
       }
       const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf8');
-      console.log(`▶  Running ${file}...`);
+      logger.info(`Running migration: ${file}`);
       await client.query(sql);
       await client.query('INSERT INTO _migrations (filename) VALUES ($1)', [file]);
-      console.log(`✅ ${file} complete`);
     }
-    console.log('\n✅ All migrations complete.');
+    logger.info('All migrations complete.');
+  } catch (err) {
+    logger.error('Migration failed:', err);
+    throw err;
   } finally {
     client.release();
-    await pool.end();
   }
 }
 
-migrate().catch(err => {
-  console.error('Migration failed:', err);
-  process.exit(1);
-});
+if (require.main === module) {
+  migrate().then(() => {
+    logger.info('Migration script finished successfully');
+    process.exit(0);
+  }).catch(err => {
+    logger.error('Migration script failed', err);
+    process.exit(1);
+  });
+}
+
+module.exports = migrate;

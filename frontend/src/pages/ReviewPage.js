@@ -1,19 +1,17 @@
 import { useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { fetchReview, updateReview } from '../utils/api';
-import { fmt, fmtDateTime } from '../utils/helpers';
+import { fmt } from '../utils/helpers';
 import { Card, Button, Spinner, Input } from '../components/UI';
 
 export default function ReviewPage() {
   const { id } = useParams();
-  const navigate = useNavigate();
   const qc = useQueryClient();
 
   const [decision, setDecision] = useState(null);
   const [comments, setComments] = useState('');
-  const [conditions, setConditions] = useState('');
   const [officer, setOfficer] = useState('');
   const [assessment, setAssessment] = useState({});
 
@@ -26,7 +24,7 @@ export default function ReviewPage() {
     mutationFn: () => updateReview(id, {
       status: decision,
       comments,
-      conditions,
+
       assessment_data: assessment,
       assigned_to: officer
     }),
