@@ -1,0 +1,91 @@
+<<<<<<< SEARCH
+import { fetchRequest, issueClearance } from '../utils/api';
+=======
+import { fetchRequest, issueClearance, updateReview } from '../utils/api';
+>>>>>>> REPLACE
+<<<<<<< SEARCH
+  const issueMutation = useMutation({
+    mutationFn: () => issueClearance({
+      request_id: id,
+      issued_by_officer: officer || 'DFA Officer',
+    }),
+    onSuccess: (data) => {
+      toast.success('Clearance issued successfully!');
+      setQrData(data);
+      qc.invalidateQueries(['request', id]);
+      qc.invalidateQueries(['requests']);
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  if (isLoading) return (
+    <div style={{ display:'flex', justifyContent:'center', padding:60 }}><Spinner size={40} /></div>
+  );
+  if (!request) return (
+    <div style={{ padding:40, color:'var(--red-text)', textAlign:'center' }}>Request not found.</div>
+  );
+
+  const over = isOverdue(request);
+  const canIssue = request.status === 'APPROVED';
+  const reviews = request.reviews || [];
+
+  const dfaReview = reviews.find(r => r.dept_code === 'DFA' && r.status === 'PENDING');
+  const isSubmitted = request.status === 'SUBMITTED';
+
+  const forwardMutation = useMutation({
+    mutationFn: () => updateReview(dfaReview.review_id, {
+      status: 'APPROVED',
+      comments: 'Initial review complete. Forwarding to agencies.',
+      assigned_to: officer || 'DFA Officer'
+    }),
+    onSuccess: () => {
+      toast.success('Request forwarded to agencies!');
+      qc.invalidateQueries(['request', id]);
+    },
+    onError: (err) => toast.error(err.message),
+  });
+=======
+  const issueMutation = useMutation({
+    mutationFn: () => issueClearance({
+      request_id: id,
+      issued_by_officer: officer || 'DFA Officer',
+    }),
+    onSuccess: (data) => {
+      toast.success('Clearance issued successfully!');
+      setQrData(data);
+      qc.invalidateQueries(['request', id]);
+      qc.invalidateQueries(['requests']);
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const reviews = request?.reviews || [];
+  const dfaReview = reviews.find(r => r.dept_code === 'DFA' && r.status === 'PENDING');
+
+  const forwardMutation = useMutation({
+    mutationFn: () => {
+      if (!dfaReview) throw new Error('No pending DFA review found');
+      return updateReview(dfaReview.review_id, {
+        status: 'APPROVED',
+        comments: 'Initial review complete. Forwarding to agencies.',
+        assigned_to: officer || 'DFA Officer'
+      });
+    },
+    onSuccess: () => {
+      toast.success('Request forwarded to agencies!');
+      qc.invalidateQueries(['request', id]);
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  if (isLoading) return (
+    <div style={{ display:'flex', justifyContent:'center', padding:60 }}><Spinner size={40} /></div>
+  );
+  if (!request) return (
+    <div style={{ padding:40, color:'var(--red-text)', textAlign:'center' }}>Request not found.</div>
+  );
+
+  const over = isOverdue(request);
+  const canIssue = request.status === 'APPROVED';
+  const isSubmitted = request.status === 'SUBMITTED';
+>>>>>>> REPLACE
