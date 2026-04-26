@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { fetchRequest, issueClearance } from '../utils/api';
+import { fetchRequest, issueClearance, updateReview } from '../utils/api';
 import { fmt, fmtDateTime, isOverdue } from '../utils/helpers';
 import { StatusPill, ReviewPill, PageHeader, Card, Button, Spinner } from '../components/UI';
 import QRModal from '../components/QRModal';
@@ -34,6 +34,25 @@ export default function RequestDetailPage() {
     onError: (err) => toast.error(err.message),
   });
 
+  const reviews = request?.reviews || [];
+  const dfaReview = reviews.find(r => r.dept_code === 'DFA' && r.status === 'PENDING');
+
+  const forwardMutation = useMutation({
+    mutationFn: () => {
+      if (!dfaReview) throw new Error('No pending DFA review found');
+      return updateReview(dfaReview.review_id, {
+        status: 'APPROVED',
+        comments: 'Initial review complete. Forwarding to agencies.',
+        assigned_to: officer || 'DFA Officer'
+      });
+    },
+    onSuccess: () => {
+      toast.success('Request forwarded to agencies!');
+      qc.invalidateQueries(['request', id]);
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
   if (isLoading) return (
     <div style={{ display:'flex', justifyContent:'center', padding:60 }}><Spinner size={40} /></div>
   );
@@ -43,23 +62,7 @@ export default function RequestDetailPage() {
 
   const over = isOverdue(request);
   const canIssue = request.status === 'APPROVED';
-  const reviews = request.reviews || [];
-
-  const dfaReview = reviews.find(r => r.dept_code === 'DFA' && r.status === 'PENDING');
   const isSubmitted = request.status === 'SUBMITTED';
-
-  const forwardMutation = useMutation({
-    mutationFn: () => updateReview(dfaReview.review_id, {
-      status: 'APPROVED',
-      comments: 'Initial review complete. Forwarding to agencies.',
-      assigned_to: officer || 'DFA Officer'
-    }),
-    onSuccess: () => {
-      toast.success('Request forwarded to agencies!');
-      qc.invalidateQueries(['request', id]);
-    },
-    onError: (err) => toast.error(err.message),
-  });
 
   return (
     <div style={{ padding: '16px 0' }} className="container">
