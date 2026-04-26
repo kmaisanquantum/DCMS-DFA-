@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { fmt } from '../utils/helpers';
 import { Button } from './UI';

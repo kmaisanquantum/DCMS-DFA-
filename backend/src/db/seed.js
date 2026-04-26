@@ -17,13 +17,15 @@ async function seed() {
     throw err;
   } finally {
     client.release();
-    await pool.end();
   }
 }
 
 if (require.main === module) {
-  seed().catch(err => {
-    console.error(err);
+  seed().then(() => {
+    logger.info('Seed script finished successfully');
+    process.exit(0);
+  }).catch(err => {
+    logger.error('Seed script failed', err);
     process.exit(1);
   });
 }

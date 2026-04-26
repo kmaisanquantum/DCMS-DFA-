@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { fetchRequest, issueClearance, updateReview } from '../utils/api';
 import { fmt, fmtDateTime, isOverdue } from '../utils/helpers';
-import { StatusPill, ReviewPill, PageHeader, Card, Button, Spinner } from '../components/UI';
+import { StatusPill, ReviewPill, Card, Button, Spinner } from '../components/UI';
 import QRModal from '../components/QRModal';
 
 export default function RequestDetailPage() {

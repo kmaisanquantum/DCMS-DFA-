@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { pool } = require('./pool');
 const logger = require('../utils/logger');
+const seed = require('./seed');
 
 async function migrate() {
   const migrationsDir = path.join(__dirname, '../../../database/migrations');
@@ -17,6 +18,7 @@ async function migrate() {
       )
     `);
 
+    let anyNewMigration = false;
     for (const file of files) {
       const { rows } = await client.query(
         'SELECT id FROM _migrations WHERE filename = $1', [file]
@@ -28,8 +30,15 @@ async function migrate() {
       logger.info(`Running migration: ${file}`);
       await client.query(sql);
       await client.query('INSERT INTO _migrations (filename) VALUES ($1)', [file]);
+      anyNewMigration = true;
     }
     logger.info('All migrations complete.');
+
+    // Seed if we just ran the initial migration
+    if (anyNewMigration) {
+      logger.info('Running seed data because new migrations were applied.');
+      await seed();
+    }
   } catch (err) {
     logger.error('Migration failed:', err);
     throw err;
